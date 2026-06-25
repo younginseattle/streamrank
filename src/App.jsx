@@ -446,14 +446,20 @@ export default function App() {
     if (serverOk) activeServices.forEach(svc => fetchSvc(svc));
   }, [serverOk]); // eslint-disable-line
 
-  // Consolidate same title across services into one entry
+  // Consolidate same title across services into one entry.
+  // Use the canonical show ID (stable across service queries) as primary key,
+  // falling back to normalized title+type so random-ID items still group by name.
   const allItems = Object.entries(catalog)
     .filter(([svc]) => activeServices.includes(svc))
     .flatMap(([, items]) => items);
 
   const grouped = new Map();
   for (const item of allItems) {
-    const key = `${item.title.toLowerCase()}|${item.type}`;
+    // Prefer the API's stable ID; only fall back to title when ID was randomised
+    const isRandomId = item.id.startsWith("0.");
+    const key = isRandomId
+      ? `title:${item.title.toLowerCase().trim()}|${item.type}`
+      : `id:${item.id}`;
     if (grouped.has(key)) {
       const existing = grouped.get(key);
       if (!existing.services.includes(item.service)) {
@@ -470,16 +476,20 @@ export default function App() {
   }
   const consolidated = Array.from(grouped.values());
 
+  const dismissKey = (item) => item.id.startsWith("0.")
+    ? `title:${item.title.toLowerCase().trim()}|${item.type}`
+    : `id:${item.id}`;
+
   const scored = consolidated
     .filter(i => filterType === "all" || i.type === filterType)
-    .filter(i => !dismissed.has(`${i.title.toLowerCase()}|${i.type}`))
+    .filter(i => !dismissed.has(dismissKey(i)))
     .map(item => ({ item, score: scoreItem(item, params) }))
     .sort((a, b) => sortBy === "score" ? b.score - a.score : (b.item.rating ?? 0) - (a.item.rating ?? 0));
 
   const totalLoaded = Object.values(catalog).flat().length;
   const anyLoading  = Object.values(statuses).some(s => s === "loading");
 
-  const dismiss = (key) => setDismissed(prev => new Set([...prev, key]));
+  const dismiss = (item) => setDismissed(prev => new Set([...prev, dismissKey(item)]));
 
   return (
     <>
@@ -727,7 +737,7 @@ export default function App() {
                       item={item}
                       score={score}
                       rank={i + 1}
-                      onDismiss={() => dismiss(`${item.title.toLowerCase()}|${item.type}`)}
+                      onDismiss={() => dismiss(item)}
                     />
                   ))}
                 </div>
