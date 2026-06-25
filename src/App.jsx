@@ -107,7 +107,7 @@ function ScoreMeter({ score, size = 50 }) {
   const r = 19, circ = 2 * Math.PI * r;
   const pct = Math.min(100, Math.max(0, score));
   const offset = circ - (pct / 100) * circ;
-  const color = pct >= 75 ? "#7C3AED" : pct >= 55 ? "#A78BFA" : pct >= 35 ? "#6B7280" : "#374151";
+  const color = pct >= 75 ? "#7C3AED" : pct >= 55 ? "#A78BFA" : pct >= 35 ? "#9CA3AF" : "#4B5563";
   return (
     <div style={{ position: "relative", width: size, height: size, flexShrink: 0 }}>
       <svg width={size} height={size} style={{ transform: "rotate(-90deg)" }}>
@@ -138,9 +138,11 @@ function ServiceBadge({ service }) {
   );
 }
 
-function ContentCard({ item, score, rank }) {
+function ContentCard({ item, score, rank, onDismiss }) {
   const [open, setOpen] = useState(false);
-  const cfg = SERVICE_CONFIG[item.service] ?? { color: "#7C3AED" };
+  // use the first service for accent color
+  const primaryService = item.services[0];
+  const cfg = SERVICE_CONFIG[primaryService] ?? { color: "#7C3AED" };
   return (
     <div onClick={() => setOpen(o => !o)}
       style={{ background: "#0F0F18", borderRadius: 9, padding: "11px 14px", cursor: "pointer",
@@ -149,55 +151,68 @@ function ContentCard({ item, score, rank }) {
       onMouseEnter={e => e.currentTarget.style.background = "#131320"}
       onMouseLeave={e => e.currentTarget.style.background = "#0F0F18"}>
       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-        <span style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: 18, color: "#374151",
+        <span style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: 18, color: "#6B7280",
           width: 24, textAlign: "right", flexShrink: 0 }}>{rank}</span>
         <ScoreMeter score={score} size={46} />
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: "flex", alignItems: "baseline", gap: 7, flexWrap: "wrap" }}>
             <span style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: 16,
               color: "#F9FAFB", letterSpacing: "0.03em" }}>{item.title}</span>
-            <span style={{ fontSize: 11, color: "#4B5563", fontFamily: "Inter,sans-serif" }}>
+            <span style={{ fontSize: 11, color: "#9CA3AF", fontFamily: "Inter,sans-serif" }}>
               {item.year > 0 ? item.year : ""}
               {item.type === "series" && item.seasons ? ` · ${item.seasons}S` : ""}
               {item.type === "movie"  && item.runtime  ? ` · ${item.runtime}m` : ""}
             </span>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 4, flexWrap: "wrap" }}>
-            <ServiceBadge service={item.service} />
+            {item.services.map(svc => <ServiceBadge key={svc} service={svc} />)}
             {item.genres.slice(0, 2).map(g =>
-              <span key={g} style={{ fontSize: 10, color: "#4B5563", fontFamily: "Inter,sans-serif" }}>{g}</span>
+              <span key={g} style={{ fontSize: 10, color: "#9CA3AF", fontFamily: "Inter,sans-serif" }}>{g}</span>
             )}
           </div>
         </div>
         <div style={{ display: "flex", gap: 10, flexShrink: 0, alignItems: "center" }}>
           {item.rating !== null && (
             <div style={{ textAlign: "center" }}>
-              <div style={{ fontSize: 9, color: "#4B5563", textTransform: "uppercase",
+              <div style={{ fontSize: 9, color: "#9CA3AF", textTransform: "uppercase",
                 letterSpacing: "0.07em", fontFamily: "Inter,sans-serif" }}>Score</div>
               <div style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: 14,
-                color: item.rating >= 80 ? "#22C55E" : "#9CA3AF" }}>{item.rating}</div>
+                color: item.rating >= 80 ? "#22C55E" : "#C4B5FD" }}>{item.rating}</div>
             </div>
           )}
-          {item.deepLink && (
-            <a href={item.deepLink} target="_blank" rel="noopener noreferrer"
+          {/* Watch links — one per service that has a deep link */}
+          {item.services.map(svc => item.deepLinks[svc] ? (
+            <a key={svc} href={item.deepLinks[svc]} target="_blank" rel="noopener noreferrer"
               onClick={e => e.stopPropagation()}
-              style={{ fontSize: 11, color: cfg.color, textDecoration: "none",
-                border: `1px solid ${cfg.color}44`, padding: "3px 8px",
-                borderRadius: 4, fontWeight: 600, fontFamily: "Inter,sans-serif" }}>
-              Watch ↗
+              style={{ fontSize: 11, color: SERVICE_CONFIG[svc]?.color ?? cfg.color,
+                textDecoration: "none",
+                border: `1px solid ${(SERVICE_CONFIG[svc]?.color ?? cfg.color)}44`,
+                padding: "3px 8px", borderRadius: 4, fontWeight: 600,
+                fontFamily: "Inter,sans-serif" }}>
+              {SERVICE_CONFIG[svc]?.label ?? svc} ↗
             </a>
-          )}
+          ) : null)}
+          <button
+            onClick={e => { e.stopPropagation(); onDismiss(); }}
+            title="Remove from list"
+            style={{ fontSize: 15, lineHeight: 1, padding: "2px 6px", borderRadius: 4,
+              border: "1px solid #1F2937", background: "transparent",
+              color: "#6B7280", cursor: "pointer", flexShrink: 0 }}
+            onMouseEnter={e => { e.currentTarget.style.color = "#EF4444"; e.currentTarget.style.borderColor = "#EF444444"; }}
+            onMouseLeave={e => { e.currentTarget.style.color = "#6B7280"; e.currentTarget.style.borderColor = "#1F2937"; }}>
+            ×
+          </button>
         </div>
       </div>
       {open && item.description && (
         <div style={{ marginTop: 9, paddingTop: 9, borderTop: "1px solid #1F2937",
-          fontSize: 12, color: "#9CA3AF", fontFamily: "Inter,sans-serif", lineHeight: 1.65 }}>
+          fontSize: 12, color: "#C4B5FD", fontFamily: "Inter,sans-serif", lineHeight: 1.65 }}>
           {item.description}
           {item.mood.length > 0 && (
             <div style={{ marginTop: 6, display: "flex", gap: 5, flexWrap: "wrap" }}>
               {item.mood.map(m => (
                 <span key={m} style={{ fontSize: 10, padding: "2px 6px", borderRadius: 3,
-                  background: "#1F2937", color: "#6B7280", textTransform: "uppercase",
+                  background: "#1F2937", color: "#9CA3AF", textTransform: "uppercase",
                   letterSpacing: "0.06em", fontWeight: 600 }}>{m}</span>
               ))}
             </div>
@@ -222,16 +237,16 @@ function ParamSlider({ param, onChange }) {
           </button>
           <div>
             <div style={{ fontSize: 12, fontWeight: 600, fontFamily: "Inter,sans-serif",
-              color: param.enabled ? "#E5E7EB" : "#4B5563", transition: "color 0.2s" }}>
+              color: param.enabled ? "#E5E7EB" : "#6B7280", transition: "color 0.2s" }}>
               {param.label}
             </div>
-            <div style={{ fontSize: 10, color: "#374151", fontFamily: "Inter,sans-serif" }}>
+            <div style={{ fontSize: 10, color: "#9CA3AF", fontFamily: "Inter,sans-serif" }}>
               {param.description}
             </div>
           </div>
         </div>
         <span style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: 16,
-          color: param.enabled ? "#7C3AED" : "#374151", minWidth: 24, textAlign: "right" }}>
+          color: param.enabled ? "#7C3AED" : "#4B5563", minWidth: 24, textAlign: "right" }}>
           {param.weight}
         </span>
       </div>
@@ -245,10 +260,10 @@ function ParamSlider({ param, onChange }) {
 }
 
 function StatusDot({ status }) {
-  const colors = { idle: "#374151", loading: "#F59E0B", loaded: "#22C55E", error: "#EF4444" };
+  const colors = { idle: "#4B5563", loading: "#F59E0B", loaded: "#22C55E", error: "#EF4444" };
   return (
     <div style={{ width: 7, height: 7, borderRadius: "50%", flexShrink: 0,
-      background: colors[status] ?? "#374151",
+      background: colors[status] ?? "#4B5563",
       boxShadow: status === "loading" ? "0 0 5px #F59E0B" : status === "loaded" ? "0 0 5px #22C55E88" : "none",
       animation: status === "loading" ? "spin 1s linear infinite" : "none" }} />
   );
@@ -270,20 +285,20 @@ function RefreshControl({ svcKey, refreshRate, onRateChange, status, lastFetched
           <span style={{ fontSize: 12, fontWeight: 600, color: "#E5E7EB", fontFamily: "Inter,sans-serif" }}>
             {cfg.label}
           </span>
-          <span style={{ fontSize: 10, color: "#374151", fontFamily: "Inter,sans-serif" }}>{ago}</span>
+          <span style={{ fontSize: 10, color: "#9CA3AF", fontFamily: "Inter,sans-serif" }}>{ago}</span>
         </div>
         <div style={{ display: "flex", gap: 5, alignItems: "center" }}>
           <button onClick={() => setOpen(o => !o)} style={{
             fontSize: 10, padding: "2px 7px", borderRadius: 4, cursor: "pointer",
             border: `1px solid ${refreshRate ? "#7C3AED" : "#1F2937"}`,
-            background: "transparent", color: refreshRate ? "#A78BFA" : "#4B5563",
+            background: "transparent", color: refreshRate ? "#A78BFA" : "#6B7280",
             fontFamily: "Inter,sans-serif", fontWeight: 600 }}>
             {rateName}
           </button>
           <button onClick={onNow} disabled={status === "loading"} title="Refresh now" style={{
             fontSize: 13, padding: "0px 5px", borderRadius: 4, lineHeight: 1.6,
             border: "1px solid #1F2937", background: "transparent",
-            color: "#6B7280", cursor: status === "loading" ? "not-allowed" : "pointer" }}>
+            color: "#9CA3AF", cursor: status === "loading" ? "not-allowed" : "pointer" }}>
             ↻
           </button>
         </div>
@@ -295,7 +310,7 @@ function RefreshControl({ svcKey, refreshRate, onRateChange, status, lastFetched
               fontSize: 10, padding: "2px 7px", borderRadius: 4, cursor: "pointer",
               border: `1px solid ${refreshRate === opt.ms ? "#7C3AED" : "#1F2937"}`,
               background: refreshRate === opt.ms ? "#2D1B6B" : "transparent",
-              color: refreshRate === opt.ms ? "#A78BFA" : "#4B5563",
+              color: refreshRate === opt.ms ? "#A78BFA" : "#6B7280",
               fontFamily: "Inter,sans-serif", fontWeight: 600 }}>
               {opt.label}
             </button>
@@ -319,12 +334,11 @@ function AIInsight({ params, scored }) {
   const run = async () => {
     setLoading(true); setShown(true);
     const top5 = scored.slice(0, 5).map(s =>
-      `${s.item.title} (my score: ${s.score}, on ${SERVICE_CONFIG[s.item.service]?.label})`
+      `${s.item.title} (my score: ${s.score}, on ${s.item.services.map(svc => SERVICE_CONFIG[svc]?.label).join("/")})`
     ).join(", ");
     const ps = params.filter(p => p.enabled && p.weight > 0)
       .map(p => `${p.label}(${p.weight})`).join(", ");
     try {
-      // Calls local proxy — Anthropic key stays on server
       const res = await fetch("/api/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -368,7 +382,7 @@ function AIInsight({ params, scored }) {
       {shown && (
         <div style={{ fontSize: 12, color: "#C4B5FD", fontFamily: "Inter,sans-serif",
           lineHeight: 1.7, minHeight: 30 }}>
-          {loading ? <span style={{ color: "#6B7280" }}>Thinking…</span> : text}
+          {loading ? <span style={{ color: "#9CA3AF" }}>Thinking…</span> : text}
         </div>
       )}
     </div>
@@ -377,7 +391,7 @@ function AIInsight({ params, scored }) {
 
 // ── Main App ───────────────────────────────────────────────────────────────────
 export default function App() {
-  const [serverOk,    setServerOk]    = useState(null); // null=checking, true, false
+  const [serverOk,    setServerOk]    = useState(null);
   const [serverInfo,  setServerInfo]  = useState(null);
   const [params,      setParams]      = useState(DEFAULT_PARAMS);
   const [catalog,     setCatalog]     = useState({});
@@ -389,9 +403,9 @@ export default function App() {
   const [sortBy,      setSortBy]      = useState("score");
   const [globalRate,  setGlobalRate]  = useState(null);
   const [errorLog,    setErrorLog]    = useState([]);
+  const [dismissed,   setDismissed]   = useState(new Set());
   const timers = useRef({});
 
-  // Check server health on mount
   useEffect(() => {
     fetch("/api/health")
       .then(r => r.json())
@@ -428,27 +442,44 @@ export default function App() {
 
   useEffect(() => () => Object.values(timers.current).forEach(clearInterval), []);
 
-  // Initial fetch once server is confirmed healthy
   useEffect(() => {
     if (serverOk) activeServices.forEach(svc => fetchSvc(svc));
   }, [serverOk]); // eslint-disable-line
 
-  // Build scored list
+  // Consolidate same title across services into one entry
   const allItems = Object.entries(catalog)
     .filter(([svc]) => activeServices.includes(svc))
     .flatMap(([, items]) => items);
 
-  const deduped = Array.from(
-    allItems.reduce((m, i) => { m.set(`${i.title}|${i.service}`, i); return m; }, new Map()).values()
-  );
+  const grouped = new Map();
+  for (const item of allItems) {
+    const key = `${item.title.toLowerCase()}|${item.type}`;
+    if (grouped.has(key)) {
+      const existing = grouped.get(key);
+      if (!existing.services.includes(item.service)) {
+        existing.services.push(item.service);
+        existing.deepLinks[item.service] = item.deepLink;
+      }
+    } else {
+      grouped.set(key, {
+        ...item,
+        services: [item.service],
+        deepLinks: { [item.service]: item.deepLink },
+      });
+    }
+  }
+  const consolidated = Array.from(grouped.values());
 
-  const scored = deduped
+  const scored = consolidated
     .filter(i => filterType === "all" || i.type === filterType)
+    .filter(i => !dismissed.has(`${i.title.toLowerCase()}|${i.type}`))
     .map(item => ({ item, score: scoreItem(item, params) }))
     .sort((a, b) => sortBy === "score" ? b.score - a.score : (b.item.rating ?? 0) - (a.item.rating ?? 0));
 
   const totalLoaded = Object.values(catalog).flat().length;
   const anyLoading  = Object.values(statuses).some(s => s === "loading");
+
+  const dismiss = (key) => setDismissed(prev => new Set([...prev, key]));
 
   return (
     <>
@@ -472,13 +503,13 @@ export default function App() {
             <span style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: 22, letterSpacing: "0.08em" }}>
               STREAMRANK
             </span>
-            <span style={{ fontSize: 10, color: "#374151", letterSpacing: "0.1em", textTransform: "uppercase" }}>
+            <span style={{ fontSize: 10, color: "#9CA3AF", letterSpacing: "0.1em", textTransform: "uppercase" }}>
               Personal Scoring Engine
             </span>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             {serverOk === null && (
-              <span style={{ fontSize: 11, color: "#6B7280", animation: "pulse 1s infinite" }}>
+              <span style={{ fontSize: 11, color: "#9CA3AF", animation: "pulse 1s infinite" }}>
                 connecting to server…
               </span>
             )}
@@ -486,7 +517,7 @@ export default function App() {
               <>
                 <div style={{ width: 7, height: 7, borderRadius: "50%", background: "#22C55E",
                   boxShadow: "0 0 5px #22C55E" }} />
-                <span style={{ fontSize: 11, color: "#6B7280" }}>
+                <span style={{ fontSize: 11, color: "#9CA3AF" }}>
                   {serverInfo?.streaming ?? "?"} ·{" "}
                   {totalLoaded} titles loaded
                   {anyLoading &&
@@ -517,11 +548,11 @@ export default function App() {
             <div style={{ marginBottom: 12 }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
                 <span style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: 11,
-                  letterSpacing: "0.1em", color: "#6B7280" }}>SERVICES & REFRESH</span>
+                  letterSpacing: "0.1em", color: "#9CA3AF" }}>SERVICES & REFRESH</span>
                 <button onClick={() => setActiveServices(
                   activeServices.length === Object.keys(SERVICE_CONFIG).length
                     ? [] : Object.keys(SERVICE_CONFIG)
-                )} style={{ fontSize: 10, color: "#4B5563", background: "transparent",
+                )} style={{ fontSize: 10, color: "#9CA3AF", background: "transparent",
                   border: "none", cursor: "pointer" }}>
                   {activeServices.length === Object.keys(SERVICE_CONFIG).length ? "none" : "all"}
                 </button>
@@ -529,14 +560,14 @@ export default function App() {
 
               {/* Global rate */}
               <div style={{ display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap", marginBottom: 8 }}>
-                <span style={{ fontSize: 10, color: "#4B5563", fontWeight: 600,
+                <span style={{ fontSize: 10, color: "#9CA3AF", fontWeight: 600,
                   textTransform: "uppercase", letterSpacing: "0.06em" }}>All:</span>
                 {REFRESH_OPTIONS.map(opt => (
                   <button key={opt.label} onClick={() => setGlobal(opt.ms)} style={{
                     fontSize: 10, padding: "2px 6px", borderRadius: 4, cursor: "pointer",
                     border: `1px solid ${globalRate === opt.ms ? "#7C3AED" : "#1F2937"}`,
                     background: globalRate === opt.ms ? "#2D1B6B" : "transparent",
-                    color: globalRate === opt.ms ? "#A78BFA" : "#4B5563",
+                    color: globalRate === opt.ms ? "#A78BFA" : "#6B7280",
                     fontFamily: "Inter,sans-serif", fontWeight: 600 }}>
                     {opt.label}
                   </button>
@@ -570,8 +601,8 @@ export default function App() {
             <div style={{ borderTop: "1px solid #111827", paddingTop: 11 }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
                 <span style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: 11,
-                  letterSpacing: "0.1em", color: "#6B7280" }}>SCORING PARAMETERS</span>
-                <span style={{ fontSize: 10, color: "#374151" }}>
+                  letterSpacing: "0.1em", color: "#9CA3AF" }}>SCORING PARAMETERS</span>
+                <span style={{ fontSize: 10, color: "#9CA3AF" }}>
                   {params.filter(p => p.enabled && p.weight > 0).length} active
                 </span>
               </div>
@@ -583,7 +614,7 @@ export default function App() {
 
             {/* Type filter */}
             <div style={{ marginTop: 11 }}>
-              <div style={{ fontSize: 10, color: "#4B5563", textTransform: "uppercase",
+              <div style={{ fontSize: 10, color: "#9CA3AF", textTransform: "uppercase",
                 letterSpacing: "0.07em", fontWeight: 600, marginBottom: 6 }}>Content Type</div>
               <div style={{ display: "flex", gap: 5 }}>
                 {["all", "series", "movie"].map(t => (
@@ -591,12 +622,24 @@ export default function App() {
                     padding: "3px 8px", borderRadius: 5, fontSize: 11, fontWeight: 600,
                     border: `1px solid ${filterType === t ? "#7C3AED" : "#1F2937"}`,
                     background: filterType === t ? "#2D1B6B" : "transparent",
-                    color: filterType === t ? "#A78BFA" : "#4B5563", cursor: "pointer" }}>
+                    color: filterType === t ? "#A78BFA" : "#6B7280", cursor: "pointer" }}>
                     {t[0].toUpperCase() + t.slice(1)}
                   </button>
                 ))}
               </div>
             </div>
+
+            {/* Dismissed count */}
+            {dismissed.size > 0 && (
+              <div style={{ marginTop: 11, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <span style={{ fontSize: 10, color: "#9CA3AF" }}>{dismissed.size} title{dismissed.size !== 1 ? "s" : ""} hidden</span>
+                <button onClick={() => setDismissed(new Set())} style={{
+                  fontSize: 10, color: "#A78BFA", background: "transparent",
+                  border: "none", cursor: "pointer", textDecoration: "underline" }}>
+                  restore all
+                </button>
+              </div>
+            )}
 
             {/* Error log */}
             {errorLog.length > 0 && (
@@ -604,13 +647,13 @@ export default function App() {
                 <div style={{ fontSize: 10, color: "#EF4444", fontWeight: 600,
                   letterSpacing: "0.07em", marginBottom: 5 }}>ERRORS</div>
                 {errorLog.map((e, i) => (
-                  <div key={i} style={{ fontSize: 10, color: "#6B7280",
+                  <div key={i} style={{ fontSize: 10, color: "#9CA3AF",
                     fontFamily: "Inter,sans-serif", marginBottom: 3, lineHeight: 1.5 }}>
                     <span style={{ color: "#EF4444" }}>{SERVICE_CONFIG[e.svc]?.label}</span>
                     {" "}{e.t}: {e.msg.slice(0, 100)}
                   </div>
                 ))}
-                <button onClick={() => setErrorLog([])} style={{ fontSize: 10, color: "#374151",
+                <button onClick={() => setErrorLog([])} style={{ fontSize: 10, color: "#6B7280",
                   background: "transparent", border: "none", cursor: "pointer", marginTop: 2 }}>
                   clear
                 </button>
@@ -625,8 +668,8 @@ export default function App() {
               <div style={{ display: "flex", flexDirection: "column", alignItems: "center",
                 justifyContent: "center", height: "60vh", gap: 14, textAlign: "center" }}>
                 <div style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: 28,
-                  color: "#1F2937", letterSpacing: "0.05em" }}>SERVER NOT RUNNING</div>
-                <div style={{ fontSize: 13, color: "#4B5563", lineHeight: 1.8, maxWidth: 380 }}>
+                  color: "#4B5563", letterSpacing: "0.05em" }}>SERVER NOT RUNNING</div>
+                <div style={{ fontSize: 13, color: "#9CA3AF", lineHeight: 1.8, maxWidth: 380 }}>
                   In your terminal, from the <code style={{ background: "#1F2937", padding: "1px 5px",
                     borderRadius: 3 }}>streamrank/</code> folder, run:
                   <br /><br />
@@ -643,18 +686,18 @@ export default function App() {
                   <div>
                     <span style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: 17,
                       letterSpacing: "0.05em", color: "#E5E7EB" }}>{scored.length} TITLES</span>
-                    <span style={{ fontSize: 11, color: "#4B5563", marginLeft: 7 }}>
+                    <span style={{ fontSize: 11, color: "#9CA3AF", marginLeft: 7 }}>
                       ranked by your parameters
                     </span>
                   </div>
                   <div style={{ display: "flex", gap: 5, alignItems: "center" }}>
-                    <span style={{ fontSize: 10, color: "#4B5563" }}>Sort:</span>
+                    <span style={{ fontSize: 10, color: "#9CA3AF" }}>Sort:</span>
                     {[["score", "My Score"], ["rating", "API Rating"]].map(([val, lbl]) => (
                       <button key={val} onClick={() => setSortBy(val)} style={{
                         padding: "2px 8px", borderRadius: 5, fontSize: 11, fontWeight: 600,
                         border: `1px solid ${sortBy === val ? "#7C3AED" : "#1F2937"}`,
                         background: sortBy === val ? "#2D1B6B" : "transparent",
-                        color: sortBy === val ? "#A78BFA" : "#4B5563", cursor: "pointer" }}>
+                        color: sortBy === val ? "#A78BFA" : "#6B7280", cursor: "pointer" }}>
                         {lbl}
                       </button>
                     ))}
@@ -663,7 +706,7 @@ export default function App() {
 
                 {anyLoading && scored.length === 0 && (
                   <div style={{ textAlign: "center", padding: "50px 0",
-                    fontFamily: "'Bebas Neue',sans-serif", fontSize: 20, color: "#374151",
+                    fontFamily: "'Bebas Neue',sans-serif", fontSize: 20, color: "#4B5563",
                     letterSpacing: "0.05em", animation: "pulse 1.2s infinite" }}>
                     FETCHING CATALOGS…
                   </div>
@@ -671,7 +714,7 @@ export default function App() {
 
                 {!anyLoading && scored.length === 0 && totalLoaded > 0 && (
                   <div style={{ textAlign: "center", padding: "40px 0",
-                    fontFamily: "'Bebas Neue',sans-serif", fontSize: 18, color: "#374151",
+                    fontFamily: "'Bebas Neue',sans-serif", fontSize: 18, color: "#4B5563",
                     letterSpacing: "0.05em" }}>
                     NO MATCHES — TRY ADJUSTING TYPE FILTER OR ENABLING MORE SERVICES
                   </div>
@@ -679,17 +722,23 @@ export default function App() {
 
                 <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                   {scored.map(({ item, score }, i) => (
-                    <ContentCard key={`${item.service}-${item.id}`} item={item} score={score} rank={i + 1} />
+                    <ContentCard
+                      key={`${item.title.toLowerCase()}|${item.type}`}
+                      item={item}
+                      score={score}
+                      rank={i + 1}
+                      onDismiss={() => dismiss(`${item.title.toLowerCase()}|${item.type}`)}
+                    />
                   ))}
                 </div>
 
                 {scored.length > 0 && <AIInsight params={params} scored={scored} />}
 
                 <div style={{ marginTop: 14, textAlign: "center", fontSize: 10,
-                  color: "#1F2937", paddingBottom: 20 }}>
+                  color: "#4B5563", paddingBottom: 20 }}>
                   Streaming data:{" "}
                   <a href="https://www.movieofthenight.com/about/api" target="_blank"
-                    rel="noopener noreferrer" style={{ color: "#374151" }}>
+                    rel="noopener noreferrer" style={{ color: "#6B7280" }}>
                     Streaming Availability API by Movie of the Night
                   </a>
                 </div>
