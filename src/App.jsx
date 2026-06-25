@@ -455,13 +455,10 @@ export default function App() {
 
   const grouped = new Map();
   for (const item of allItems) {
-    const isRandomId = item.id.startsWith("0.");
-    const key = isRandomId
-      ? `title:${item.title.toLowerCase().trim()}|${item.type}`
-      : `id:${item.id}`;
-    if (item.title.toLowerCase().includes("game of thrones")) {
-      console.log("[dedup]", item.title, "| id:", item.id, "| key:", key, "| service:", item.service);
-    }
+    // Normalize title: lowercase, collapse whitespace, strip leading/trailing spaces
+    const normTitle = item.title.toLowerCase().replace(/\s+/g, " ").trim();
+    // Include year so two different shows with the same name don't collide
+    const key = `${normTitle}|${item.type}|${item.year}`;
     if (grouped.has(key)) {
       const existing = grouped.get(key);
       if (!existing.services.includes(item.service)) {
@@ -478,9 +475,8 @@ export default function App() {
   }
   const consolidated = Array.from(grouped.values());
 
-  const dismissKey = (item) => item.id.startsWith("0.")
-    ? `title:${item.title.toLowerCase().trim()}|${item.type}`
-    : `id:${item.id}`;
+  const dismissKey = (item) =>
+    `${item.title.toLowerCase().replace(/\s+/g, " ").trim()}|${item.type}|${item.year}`;
 
   const scored = consolidated
     .filter(i => filterType === "all" || i.type === filterType)
