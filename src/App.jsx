@@ -455,11 +455,13 @@ export default function App() {
 
   const grouped = new Map();
   for (const item of allItems) {
-    // Prefer the API's stable ID; only fall back to title when ID was randomised
     const isRandomId = item.id.startsWith("0.");
     const key = isRandomId
       ? `title:${item.title.toLowerCase().trim()}|${item.type}`
       : `id:${item.id}`;
+    if (item.title.toLowerCase().includes("game of thrones")) {
+      console.log("[dedup]", item.title, "| id:", item.id, "| key:", key, "| service:", item.service);
+    }
     if (grouped.has(key)) {
       const existing = grouped.get(key);
       if (!existing.services.includes(item.service)) {
