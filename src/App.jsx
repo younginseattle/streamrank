@@ -147,10 +147,15 @@ function ServiceBadge({ service, href }) {
   return <span style={style}>{cfg.label}</span>;
 }
 
-function ContentCard({ item, score, rank, onDismiss }) {
+function ContentCard({ item, score, rank, onDismiss, tmdb }) {
   const [open, setOpen] = useState(false);
   const primaryService = item.services[0];
   const cfg = SERVICE_CONFIG[primaryService] ?? { color: "#7C3AED" };
+  const poster = tmdb?.poster ?? item.poster ?? null;
+  const overview = tmdb?.overview ?? item.description ?? "";
+  const displayRating = tmdb?.tmdbRating ?? item.rating;
+  const genres = tmdb?.genres?.length ? tmdb.genres : item.genres;
+
   return (
     <div onClick={() => setOpen(o => !o)}
       style={{ background: "#0F0F18", borderRadius: 9, padding: "11px 14px", cursor: "pointer",
@@ -162,6 +167,13 @@ function ContentCard({ item, score, rank, onDismiss }) {
         <span style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: 18, color: "#6B7280",
           width: 24, textAlign: "right", flexShrink: 0 }}>{rank}</span>
         <ScoreMeter score={score} size={46} />
+        {/* Poster thumbnail */}
+        <div style={{ width: 36, height: 54, flexShrink: 0, borderRadius: 4, overflow: "hidden",
+          background: "#1F2937", display: "flex", alignItems: "center", justifyContent: "center" }}>
+          {poster
+            ? <img src={poster} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+            : <span style={{ fontSize: 16, opacity: 0.2 }}>🎬</span>}
+        </div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: "flex", alignItems: "baseline", gap: 7, flexWrap: "wrap" }}>
             <span style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: 16,
@@ -172,24 +184,22 @@ function ContentCard({ item, score, rank, onDismiss }) {
               {item.type === "movie"  && item.runtime  ? ` · ${item.runtime}m` : ""}
             </span>
           </div>
-          {/* Service badges are the watch links — no duplication */}
           <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 4, flexWrap: "wrap" }}>
             {item.services.map(svc =>
               <ServiceBadge key={svc} service={svc} href={item.deepLinks[svc] ?? null} />
             )}
-            {item.genres.slice(0, 2).map(g =>
+            {genres.slice(0, 2).map(g =>
               <span key={g} style={{ fontSize: 10, color: "#9CA3AF", fontFamily: "Inter,sans-serif" }}>{g}</span>
             )}
           </div>
         </div>
-        {/* Right side: fixed layout — score always present, then dismiss */}
         <div style={{ display: "flex", gap: 10, flexShrink: 0, alignItems: "center" }}>
           <div style={{ textAlign: "center", minWidth: 36 }}>
             <div style={{ fontSize: 9, color: "#9CA3AF", textTransform: "uppercase",
               letterSpacing: "0.07em", fontFamily: "Inter,sans-serif" }}>Score</div>
             <div style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: 14,
-              color: item.rating !== null && item.rating >= 80 ? "#22C55E" : "#C4B5FD" }}>
-              {item.rating ?? "—"}
+              color: displayRating !== null && displayRating >= 80 ? "#22C55E" : "#C4B5FD" }}>
+              {displayRating ?? "—"}
             </div>
           </div>
           <button
@@ -204,19 +214,30 @@ function ContentCard({ item, score, rank, onDismiss }) {
           </button>
         </div>
       </div>
-      {open && item.description && (
-        <div style={{ marginTop: 9, paddingTop: 9, borderTop: "1px solid #1F2937",
-          fontSize: 12, color: "#C4B5FD", fontFamily: "Inter,sans-serif", lineHeight: 1.65 }}>
-          {item.description}
-          {item.mood.length > 0 && (
-            <div style={{ marginTop: 6, display: "flex", gap: 5, flexWrap: "wrap" }}>
-              {item.mood.map(m => (
-                <span key={m} style={{ fontSize: 10, padding: "2px 6px", borderRadius: 3,
-                  background: "#1F2937", color: "#9CA3AF", textTransform: "uppercase",
-                  letterSpacing: "0.06em", fontWeight: 600 }}>{m}</span>
-              ))}
-            </div>
+      {open && (overview || tmdb?.tagline) && (
+        <div style={{ display: "flex", gap: 12, marginTop: 9, paddingTop: 9, borderTop: "1px solid #1F2937" }}>
+          {poster && (
+            <img src={poster} alt="" style={{ width: 60, height: 90, objectFit: "cover",
+              borderRadius: 4, flexShrink: 0 }} />
           )}
+          <div style={{ flex: 1 }}>
+            {tmdb?.tagline && (
+              <div style={{ fontSize: 11, color: "#7C3AED", fontStyle: "italic",
+                fontFamily: "Inter,sans-serif", marginBottom: 5 }}>"{tmdb.tagline}"</div>
+            )}
+            <div style={{ fontSize: 12, color: "#C4B5FD", fontFamily: "Inter,sans-serif", lineHeight: 1.65 }}>
+              {overview}
+            </div>
+            {item.mood.length > 0 && (
+              <div style={{ marginTop: 6, display: "flex", gap: 5, flexWrap: "wrap" }}>
+                {item.mood.map(m => (
+                  <span key={m} style={{ fontSize: 10, padding: "2px 6px", borderRadius: 3,
+                    background: "#1F2937", color: "#9CA3AF", textTransform: "uppercase",
+                    letterSpacing: "0.06em", fontWeight: 600 }}>{m}</span>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>
@@ -404,6 +425,8 @@ export default function App() {
   const [globalRate,  setGlobalRate]  = useState(null);
   const [errorLog,    setErrorLog]    = useState([]);
   const [dismissed,   setDismissed]   = useState(new Set());
+  const [tmdbCache,   setTmdbCache]   = useState({});
+  const tmdbQueue = useRef(new Set());
   const timers = useRef({});
 
   useEffect(() => {
@@ -426,6 +449,29 @@ export default function App() {
     } catch (e) {
       setStatuses(s => ({ ...s, [svcId]: "error" }));
       addError(svcId, e.message);
+    }
+  }, []);
+
+  // Fetch TMDB metadata for a batch of consolidated items
+  const fetchTmdb = useCallback(async (items) => {
+    const toFetch = items.filter(item => !tmdbQueue.current.has(item.groupKey));
+    if (!toFetch.length) return;
+    toFetch.forEach(item => tmdbQueue.current.add(item.groupKey));
+
+    // Process in batches of 10 to stay well under TMDB rate limit
+    for (let i = 0; i < toFetch.length; i += 10) {
+      const batch = toFetch.slice(i, i + 10);
+      await Promise.all(batch.map(async (item) => {
+        try {
+          const params = new URLSearchParams({ title: item.title, type: item.type });
+          if (item.year > 0) params.set("year", item.year);
+          const res = await fetch(`/api/tmdb?${params}`);
+          if (!res.ok) return;
+          const data = await res.json();
+          setTmdbCache(c => ({ ...c, [item.groupKey]: data }));
+        } catch { /* silently skip */ }
+      }));
+      if (i + 10 < toFetch.length) await new Promise(r => setTimeout(r, 300));
     }
   }, []);
 
@@ -468,12 +514,17 @@ export default function App() {
     } else {
       grouped.set(key, {
         ...item,
+        groupKey: key,
         services: [item.service],
         deepLinks: { [item.service]: item.deepLink },
       });
     }
   }
   const consolidated = Array.from(grouped.values());
+
+  // Kick off TMDB enrichment whenever the consolidated list changes
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { if (consolidated.length) fetchTmdb(consolidated); }, [consolidated.length]);
 
   const dismissKey = (item) =>
     `${item.title.toLowerCase().replace(/\s+/g, " ").trim()}|${item.type}|${item.year}`;
@@ -731,11 +782,12 @@ export default function App() {
                 <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                   {scored.map(({ item, score }, i) => (
                     <ContentCard
-                      key={`${item.title.toLowerCase()}|${item.type}`}
+                      key={item.groupKey}
                       item={item}
                       score={score}
                       rank={i + 1}
                       onDismiss={() => dismiss(item)}
+                      tmdb={tmdbCache[item.groupKey] ?? null}
                     />
                   ))}
                 </div>

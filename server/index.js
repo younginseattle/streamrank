@@ -66,6 +66,49 @@ app.get('/api/catalog', async (req, res) => {
   }
 });
 
+// ── GET /api/tmdb?title=X&type=movie|tv&year=Y ────────────────────────────
+app.get('/api/tmdb', async (req, res) => {
+  const key = process.env.TMDB_API_KEY;
+  if (!key || key === 'your_tmdb_key_here') {
+    return res.status(200).json({ poster: null, overview: null, tmdbRating: null, genres: [] });
+  }
+
+  const { title, type, year } = req.query;
+  if (!title) return res.status(400).json({ error: 'Missing ?title= parameter' });
+
+  try {
+    const endpoint = type === 'movie' ? 'search/movie' : 'search/tv';
+    const url = new URL(`https://api.themoviedb.org/3/${endpoint}`);
+    url.searchParams.set('api_key', key);
+    url.searchParams.set('query', title);
+    if (year) url.searchParams.set(type === 'movie' ? 'primary_release_year' : 'first_air_date_year', year);
+
+    const r = await fetch(url.toString());
+    if (!r.ok) return res.status(200).json({ poster: null, overview: null, tmdbRating: null, genres: [] });
+
+    const data = await r.json();
+    const hit = data.results?.[0];
+    if (!hit) return res.status(200).json({ poster: null, overview: null, tmdbRating: null, genres: [] });
+
+    // Fetch genre names via details endpoint
+    const detailUrl = `https://api.themoviedb.org/3/${type === 'movie' ? 'movie' : 'tv'}/${hit.id}?api_key=${key}`;
+    const detailR = await fetch(detailUrl);
+    const detail = detailR.ok ? await detailR.json() : {};
+
+    res.json({
+      poster:      hit.poster_path ? `https://image.tmdb.org/t/p/w185${hit.poster_path}` : null,
+      backdrop:    hit.backdrop_path ? `https://image.tmdb.org/t/p/w780${hit.backdrop_path}` : null,
+      overview:    hit.overview || null,
+      tmdbRating:  hit.vote_average ? Math.round(hit.vote_average * 10) : null,
+      genres:      (detail.genres ?? []).map(g => g.name),
+      tagline:     detail.tagline || null,
+    });
+  } catch (err) {
+    console.error('[tmdb] error:', err.message);
+    res.status(200).json({ poster: null, overview: null, tmdbRating: null, genres: [] });
+  }
+});
+
 // ── POST /api/analyze  (Anthropic proxy) ──────────────────────────────────
 app.post('/api/analyze', async (req, res) => {
   const key = process.env.ANTHROPIC_API_KEY;
@@ -98,6 +141,8 @@ app.get('/api/health', (_req, res) => {
   res.json({
     streaming: cfg ? (cfg.baseUrl.includes('movieofthenight') ? 'motn' : 'rapidapi') : 'not configured',
     anthropic: process.env.ANTHROPIC_API_KEY && process.env.ANTHROPIC_API_KEY !== 'your_anthropic_key_here'
+      ? 'configured' : 'not configured',
+    tmdb: process.env.TMDB_API_KEY && process.env.TMDB_API_KEY !== 'your_tmdb_key_here'
       ? 'configured' : 'not configured',
   });
 });
