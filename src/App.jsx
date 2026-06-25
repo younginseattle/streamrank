@@ -125,22 +125,30 @@ function ScoreMeter({ score, size = 50 }) {
   );
 }
 
-function ServiceBadge({ service }) {
+// ServiceBadge is optionally clickable when a deepLink is provided
+function ServiceBadge({ service, href }) {
   const cfg = SERVICE_CONFIG[service];
   if (!cfg) return null;
-  return (
-    <span style={{ display: "inline-flex", padding: "2px 7px", borderRadius: 4,
-      background: cfg.bg, border: `1px solid ${cfg.color}44`,
-      fontSize: 10, fontWeight: 700, color: cfg.color,
-      letterSpacing: "0.05em", fontFamily: "Inter,sans-serif", textTransform: "uppercase" }}>
-      {cfg.label}
-    </span>
-  );
+  const style = {
+    display: "inline-flex", padding: "2px 7px", borderRadius: 4,
+    background: cfg.bg, border: `1px solid ${cfg.color}44`,
+    fontSize: 10, fontWeight: 700, color: cfg.color,
+    letterSpacing: "0.05em", fontFamily: "Inter,sans-serif", textTransform: "uppercase",
+    textDecoration: "none", cursor: href ? "pointer" : "default",
+  };
+  if (href) {
+    return (
+      <a href={href} target="_blank" rel="noopener noreferrer"
+        onClick={e => e.stopPropagation()} style={style}>
+        {cfg.label} ↗
+      </a>
+    );
+  }
+  return <span style={style}>{cfg.label}</span>;
 }
 
 function ContentCard({ item, score, rank, onDismiss }) {
   const [open, setOpen] = useState(false);
-  // use the first service for accent color
   const primaryService = item.services[0];
   const cfg = SERVICE_CONFIG[primaryService] ?? { color: "#7C3AED" };
   return (
@@ -164,34 +172,26 @@ function ContentCard({ item, score, rank, onDismiss }) {
               {item.type === "movie"  && item.runtime  ? ` · ${item.runtime}m` : ""}
             </span>
           </div>
+          {/* Service badges are the watch links — no duplication */}
           <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 4, flexWrap: "wrap" }}>
-            {item.services.map(svc => <ServiceBadge key={svc} service={svc} />)}
+            {item.services.map(svc =>
+              <ServiceBadge key={svc} service={svc} href={item.deepLinks[svc] ?? null} />
+            )}
             {item.genres.slice(0, 2).map(g =>
               <span key={g} style={{ fontSize: 10, color: "#9CA3AF", fontFamily: "Inter,sans-serif" }}>{g}</span>
             )}
           </div>
         </div>
+        {/* Right side: fixed layout — score always present, then dismiss */}
         <div style={{ display: "flex", gap: 10, flexShrink: 0, alignItems: "center" }}>
-          {item.rating !== null && (
-            <div style={{ textAlign: "center" }}>
-              <div style={{ fontSize: 9, color: "#9CA3AF", textTransform: "uppercase",
-                letterSpacing: "0.07em", fontFamily: "Inter,sans-serif" }}>Score</div>
-              <div style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: 14,
-                color: item.rating >= 80 ? "#22C55E" : "#C4B5FD" }}>{item.rating}</div>
+          <div style={{ textAlign: "center", minWidth: 36 }}>
+            <div style={{ fontSize: 9, color: "#9CA3AF", textTransform: "uppercase",
+              letterSpacing: "0.07em", fontFamily: "Inter,sans-serif" }}>Score</div>
+            <div style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: 14,
+              color: item.rating !== null && item.rating >= 80 ? "#22C55E" : "#C4B5FD" }}>
+              {item.rating ?? "—"}
             </div>
-          )}
-          {/* Watch links — one per service that has a deep link */}
-          {item.services.map(svc => item.deepLinks[svc] ? (
-            <a key={svc} href={item.deepLinks[svc]} target="_blank" rel="noopener noreferrer"
-              onClick={e => e.stopPropagation()}
-              style={{ fontSize: 11, color: SERVICE_CONFIG[svc]?.color ?? cfg.color,
-                textDecoration: "none",
-                border: `1px solid ${(SERVICE_CONFIG[svc]?.color ?? cfg.color)}44`,
-                padding: "3px 8px", borderRadius: 4, fontWeight: 600,
-                fontFamily: "Inter,sans-serif" }}>
-              {SERVICE_CONFIG[svc]?.label ?? svc} ↗
-            </a>
-          ) : null)}
+          </div>
           <button
             onClick={e => { e.stopPropagation(); onDismiss(); }}
             title="Remove from list"
