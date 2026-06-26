@@ -52,8 +52,8 @@ const WIFE_PARAMS = ALL_PARAMS.map(p => ({
 }));
 
 const DEFAULT_PROFILES = [
-  { id: "matt", name: "Matt",  params: MATT_PARAMS, filterType: "all", sortBy: "score", dismissed: [] },
-  { id: "wife", name: "Wife",  params: WIFE_PARAMS, filterType: "all", sortBy: "score", dismissed: [] },
+  { id: "matt", name: "Matt",  params: MATT_PARAMS, filterType: "all", sortBy: "score", minScore: 0,  dismissed: [] },
+  { id: "wife", name: "Wife",  params: WIFE_PARAMS, filterType: "all", sortBy: "score", minScore: 25, dismissed: [] },
 ];
 
 function loadProfiles() {
@@ -575,6 +575,7 @@ export default function App() {
   const params      = profile.params;
   const filterType  = profile.filterType;
   const sortBy      = profile.sortBy;
+  const minScore    = profile.minScore ?? 0;
   const dismissed   = new Set(profile.dismissed);
 
   const updateProfile = useCallback((id, patch) => {
@@ -588,6 +589,7 @@ export default function App() {
   const setParams     = (p)  => updateProfile(activeId, { params: typeof p === "function" ? p(params) : p });
   const setFilterType = (ft) => updateProfile(activeId, { filterType: ft });
   const setSortBy     = (s)  => updateProfile(activeId, { sortBy: s });
+  const setMinScore   = (n)  => updateProfile(activeId, { minScore: n });
 
   const dismiss = (item) => {
     const key = `${item.title.toLowerCase().replace(/\s+/g, " ").trim()}|${item.type}|${item.year}`;
@@ -597,7 +599,7 @@ export default function App() {
 
   const addProfile = () => {
     const id = `profile_${Date.now()}`;
-    const newProfile = { id, name: "New Profile", params: ALL_PARAMS.map(p => ({ ...p, enabled: p.id === "rating", weight: p.id === "rating" ? 35 : p.weight })), filterType: "all", sortBy: "score", dismissed: [] };
+    const newProfile = { id, name: "New Profile", params: ALL_PARAMS.map(p => ({ ...p, enabled: p.id === "rating", weight: p.id === "rating" ? 35 : p.weight })), filterType: "all", sortBy: "score", minScore: 0, dismissed: [] };
     setProfiles(prev => { const next = [...prev, newProfile]; saveProfiles(next); return next; });
     setActiveId(id);
   };
@@ -701,6 +703,7 @@ export default function App() {
     .filter(i => filterType === "all" || i.type === filterType)
     .filter(i => !dismissed.has(dismissKey(i)))
     .map(item => ({ item, score: scoreItem(item, params) }))
+    .filter(({ score }) => score >= minScore)
     .sort((a, b) => sortBy === "score" ? b.score - a.score : (b.item.rating ?? 0) - (a.item.rating ?? 0));
 
   const totalLoaded = Object.values(catalog).flat().length;
@@ -905,17 +908,31 @@ export default function App() {
                       ranked for {profile.name}
                     </span>
                   </div>
-                  <div style={{ display: "flex", gap: 5, alignItems: "center" }}>
-                    <span style={{ fontSize: 10, color: "#9CA3AF" }}>Sort:</span>
-                    {[["score", "My Score"], ["rating", "API Rating"]].map(([val, lbl]) => (
-                      <button key={val} onClick={() => setSortBy(val)} style={{
-                        padding: "2px 8px", borderRadius: 5, fontSize: 11, fontWeight: 600,
-                        border: `1px solid ${sortBy === val ? "#7C3AED" : "#1F2937"}`,
-                        background: sortBy === val ? "#2D1B6B" : "transparent",
-                        color: sortBy === val ? "#A78BFA" : "#6B7280", cursor: "pointer" }}>
-                        {lbl}
-                      </button>
-                    ))}
+                  <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                    <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+                      <span style={{ fontSize: 10, color: "#9CA3AF" }}>Min score:</span>
+                      {[0, 25, 40, 60].map(n => (
+                        <button key={n} onClick={() => setMinScore(n)} style={{
+                          padding: "2px 7px", borderRadius: 5, fontSize: 11, fontWeight: 600,
+                          border: `1px solid ${minScore === n ? "#7C3AED" : "#1F2937"}`,
+                          background: minScore === n ? "#2D1B6B" : "transparent",
+                          color: minScore === n ? "#A78BFA" : "#6B7280", cursor: "pointer" }}>
+                          {n === 0 ? "All" : n + "+"}
+                        </button>
+                      ))}
+                    </div>
+                    <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+                      <span style={{ fontSize: 10, color: "#9CA3AF" }}>Sort:</span>
+                      {[["score", "My Score"], ["rating", "API Rating"]].map(([val, lbl]) => (
+                        <button key={val} onClick={() => setSortBy(val)} style={{
+                          padding: "2px 8px", borderRadius: 5, fontSize: 11, fontWeight: 600,
+                          border: `1px solid ${sortBy === val ? "#7C3AED" : "#1F2937"}`,
+                          background: sortBy === val ? "#2D1B6B" : "transparent",
+                          color: sortBy === val ? "#A78BFA" : "#6B7280", cursor: "pointer" }}>
+                          {lbl}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 </div>
 
