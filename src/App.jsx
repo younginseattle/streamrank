@@ -964,7 +964,7 @@ export default function App() {
                     FETCHING CATALOGS…
                   </div>
                 )}
-                {!anyLoading && scored.length === 0 && totalLoaded > 0 && (
+                {!anyLoading && scored.length === 0 && totalRaw > 0 && (
                   <div style={{ textAlign: "center", padding: "40px 0",
                     fontFamily: "'Bebas Neue',sans-serif", fontSize: 18, color: "#4B5563",
                     letterSpacing: "0.05em" }}>
