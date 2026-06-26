@@ -194,6 +194,18 @@ function ContentCard({ item, score, rank, onDismiss, tmdb }) {
           </div>
         </div>
         <div style={{ display: "flex", gap: 10, flexShrink: 0, alignItems: "center" }}>
+          {tmdb?.rtScore !== null && tmdb?.rtScore !== undefined && (
+            <div style={{ textAlign: "center", minWidth: 36 }}>
+              <div style={{ fontSize: 9, color: "#9CA3AF", textTransform: "uppercase",
+                letterSpacing: "0.07em", fontFamily: "Inter,sans-serif" }}>
+                {tmdb.rtScore >= 60 ? "🍅" : "🤢"}
+              </div>
+              <div style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: 14,
+                color: tmdb.rtScore >= 60 ? "#EF4444" : "#9CA3AF" }}>
+                {tmdb.rtScore}%
+              </div>
+            </div>
+          )}
           <div style={{ textAlign: "center", minWidth: 36 }}>
             <div style={{ fontSize: 9, color: "#9CA3AF", textTransform: "uppercase",
               letterSpacing: "0.07em", fontFamily: "Inter,sans-serif" }}>Score</div>
@@ -221,6 +233,28 @@ function ContentCard({ item, score, rank, onDismiss, tmdb }) {
               borderRadius: 4, flexShrink: 0 }} />
           )}
           <div style={{ flex: 1 }}>
+            {/* Ratings row in expanded view */}
+            {(tmdb?.rtScore != null || tmdb?.imdbRating != null || tmdb?.metascore != null) && (
+              <div style={{ display: "flex", gap: 12, marginBottom: 7, flexWrap: "wrap" }}>
+                {tmdb.rtScore != null && (
+                  <span style={{ fontSize: 11, fontFamily: "Inter,sans-serif", fontWeight: 600,
+                    color: tmdb.rtScore >= 60 ? "#EF4444" : "#9CA3AF" }}>
+                    {tmdb.rtScore >= 60 ? "🍅" : "🤢"} RT {tmdb.rtScore}%
+                  </span>
+                )}
+                {tmdb.imdbRating != null && (
+                  <span style={{ fontSize: 11, fontFamily: "Inter,sans-serif", fontWeight: 600, color: "#F5C518" }}>
+                    ⭐ IMDb {(tmdb.imdbRating / 10).toFixed(1)}
+                  </span>
+                )}
+                {tmdb.metascore != null && (
+                  <span style={{ fontSize: 11, fontFamily: "Inter,sans-serif", fontWeight: 600,
+                    color: tmdb.metascore >= 61 ? "#22C55E" : tmdb.metascore >= 40 ? "#F59E0B" : "#EF4444" }}>
+                    M {tmdb.metascore}
+                  </span>
+                )}
+              </div>
+            )}
             {tmdb?.tagline && (
               <div style={{ fontSize: 11, color: "#7C3AED", fontStyle: "italic",
                 fontFamily: "Inter,sans-serif", marginBottom: 5 }}>"{tmdb.tagline}"</div>

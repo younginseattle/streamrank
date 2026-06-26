@@ -67,45 +67,69 @@ app.get('/api/catalog', async (req, res) => {
 });
 
 // ── GET /api/tmdb?title=X&type=movie|tv&year=Y ────────────────────────────
+// Fetches TMDB + OMDb in parallel and returns combined metadata including RT score
 app.get('/api/tmdb', async (req, res) => {
-  const key = process.env.TMDB_API_KEY;
-  if (!key || key === 'your_tmdb_key_here') {
-    return res.status(200).json({ poster: null, overview: null, tmdbRating: null, genres: [] });
-  }
+  const tmdbKey = process.env.TMDB_API_KEY;
+  const omdbKey = process.env.OMDB_API_KEY;
 
   const { title, type, year } = req.query;
   if (!title) return res.status(400).json({ error: 'Missing ?title= parameter' });
 
+  const empty = { poster: null, overview: null, tmdbRating: null, genres: [], tagline: null, rtScore: null, metascore: null, imdbRating: null };
+
   try {
-    const endpoint = type === 'movie' ? 'search/movie' : 'search/tv';
-    const url = new URL(`https://api.themoviedb.org/3/${endpoint}`);
-    url.searchParams.set('api_key', key);
-    url.searchParams.set('query', title);
-    if (year) url.searchParams.set(type === 'movie' ? 'primary_release_year' : 'first_air_date_year', year);
+    // ── TMDB ──
+    const tmdbPromise = (async () => {
+      if (!tmdbKey || tmdbKey === 'your_tmdb_key_here') return {};
+      const endpoint = type === 'movie' ? 'search/movie' : 'search/tv';
+      const url = new URL(`https://api.themoviedb.org/3/${endpoint}`);
+      url.searchParams.set('api_key', tmdbKey);
+      url.searchParams.set('query', title);
+      if (year) url.searchParams.set(type === 'movie' ? 'primary_release_year' : 'first_air_date_year', year);
+      const r = await fetch(url.toString());
+      if (!r.ok) return {};
+      const data = await r.json();
+      const hit = data.results?.[0];
+      if (!hit) return {};
+      const detailUrl = `https://api.themoviedb.org/3/${type === 'movie' ? 'movie' : 'tv'}/${hit.id}?api_key=${tmdbKey}`;
+      const detailR = await fetch(detailUrl);
+      const detail = detailR.ok ? await detailR.json() : {};
+      return {
+        poster:     hit.poster_path ? `https://image.tmdb.org/t/p/w185${hit.poster_path}` : null,
+        backdrop:   hit.backdrop_path ? `https://image.tmdb.org/t/p/w780${hit.backdrop_path}` : null,
+        overview:   hit.overview || null,
+        tmdbRating: hit.vote_average ? Math.round(hit.vote_average * 10) : null,
+        genres:     (detail.genres ?? []).map(g => g.name),
+        tagline:    detail.tagline || null,
+      };
+    })();
 
-    const r = await fetch(url.toString());
-    if (!r.ok) return res.status(200).json({ poster: null, overview: null, tmdbRating: null, genres: [] });
+    // ── OMDb (Rotten Tomatoes + Metascore + IMDb) ──
+    const omdbPromise = (async () => {
+      if (!omdbKey || omdbKey === 'your_omdb_key_here') return {};
+      const url = new URL('https://www.omdbapi.com/');
+      url.searchParams.set('apikey', omdbKey);
+      url.searchParams.set('t', title);
+      url.searchParams.set('type', type === 'movie' ? 'movie' : 'series');
+      if (year) url.searchParams.set('y', year);
+      url.searchParams.set('tomatoes', 'true');
+      const r = await fetch(url.toString());
+      if (!r.ok) return {};
+      const data = await r.json();
+      if (data.Response === 'False') return {};
+      const rt = data.Ratings?.find(r => r.Source === 'Rotten Tomatoes');
+      return {
+        rtScore:    rt ? parseInt(rt.Value) : null,
+        metascore:  data.Metascore && data.Metascore !== 'N/A' ? parseInt(data.Metascore) : null,
+        imdbRating: data.imdbRating && data.imdbRating !== 'N/A' ? Math.round(parseFloat(data.imdbRating) * 10) : null,
+      };
+    })();
 
-    const data = await r.json();
-    const hit = data.results?.[0];
-    if (!hit) return res.status(200).json({ poster: null, overview: null, tmdbRating: null, genres: [] });
-
-    // Fetch genre names via details endpoint
-    const detailUrl = `https://api.themoviedb.org/3/${type === 'movie' ? 'movie' : 'tv'}/${hit.id}?api_key=${key}`;
-    const detailR = await fetch(detailUrl);
-    const detail = detailR.ok ? await detailR.json() : {};
-
-    res.json({
-      poster:      hit.poster_path ? `https://image.tmdb.org/t/p/w185${hit.poster_path}` : null,
-      backdrop:    hit.backdrop_path ? `https://image.tmdb.org/t/p/w780${hit.backdrop_path}` : null,
-      overview:    hit.overview || null,
-      tmdbRating:  hit.vote_average ? Math.round(hit.vote_average * 10) : null,
-      genres:      (detail.genres ?? []).map(g => g.name),
-      tagline:     detail.tagline || null,
-    });
+    const [tmdb, omdb] = await Promise.all([tmdbPromise, omdbPromise]);
+    res.json({ ...empty, ...tmdb, ...omdb });
   } catch (err) {
     console.error('[tmdb] error:', err.message);
-    res.status(200).json({ poster: null, overview: null, tmdbRating: null, genres: [] });
+    res.status(200).json(empty);
   }
 });
 
@@ -143,6 +167,8 @@ app.get('/api/health', (_req, res) => {
     anthropic: process.env.ANTHROPIC_API_KEY && process.env.ANTHROPIC_API_KEY !== 'your_anthropic_key_here'
       ? 'configured' : 'not configured',
     tmdb: process.env.TMDB_API_KEY && process.env.TMDB_API_KEY !== 'your_tmdb_key_here'
+      ? 'configured' : 'not configured',
+    omdb: process.env.OMDB_API_KEY && process.env.OMDB_API_KEY !== 'your_omdb_key_here'
       ? 'configured' : 'not configured',
   });
 });
