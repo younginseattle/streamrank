@@ -19,18 +19,56 @@ const REFRESH_OPTIONS = [
   { label: "Daily",  ms: 86_400_000 },
 ];
 
-// ── Scoring ────────────────────────────────────────────────────────────────────
-const DEFAULT_PARAMS = [
-  { id: "rating",        label: "Overall Rating",        description: "Aggregated score 0–100",  weight: 35, enabled: true  },
-  { id: "hidden_gem",    label: "Hidden Gem Bonus",      description: "High score, low popularity", weight: 15, enabled: true  },
-  { id: "family",        label: "Family Friendly",       description: "Suitable for all ages",   weight: 0,  enabled: false },
-  { id: "short_runtime", label: "Short Episodes",        description: "Under 45 min / episode",  weight: 10, enabled: true  },
-  { id: "mood_cerebral", label: "Cerebral / Thoughtful", description: "Drama, history, docs",    weight: 20, enabled: true  },
-  { id: "mood_funny",    label: "Comedy Tone",           description: "Laughs are a priority",   weight: 0,  enabled: false },
-  { id: "mood_epic",     label: "Epic / Cinematic",      description: "Action, sci-fi, fantasy", weight: 20, enabled: true  },
-  { id: "recency",       label: "Recency",               description: "Newer content preferred", weight: 0,  enabled: false },
+// ── Scoring params ─────────────────────────────────────────────────────────────
+const ALL_PARAMS = [
+  { id: "rating",         label: "Overall Rating",        description: "Aggregated score 0–100",      weight: 35, enabled: true  },
+  { id: "hidden_gem",     label: "Hidden Gem Bonus",      description: "High score, low popularity",  weight: 15, enabled: true  },
+  { id: "family",         label: "Family Friendly",       description: "Suitable for all ages",       weight: 0,  enabled: false },
+  { id: "short_runtime",  label: "Short Episodes",        description: "Under 45 min / episode",      weight: 10, enabled: true  },
+  { id: "recency",        label: "Recency",               description: "Newer content preferred",     weight: 0,  enabled: false },
+  { id: "mood_cerebral",  label: "Cerebral / Thoughtful", description: "Drama, history, docs",        weight: 20, enabled: true  },
+  { id: "mood_epic",      label: "Epic / Cinematic",      description: "Action, sci-fi, fantasy",     weight: 20, enabled: true  },
+  { id: "mood_funny",     label: "Comedy",                description: "Comedies and sitcoms",        weight: 0,  enabled: false },
+  { id: "mood_romance",   label: "Romance",               description: "Love stories & relationships",weight: 0,  enabled: false },
+  { id: "mood_romcom",    label: "Romantic Comedy",       description: "Light, fun romance + laughs", weight: 0,  enabled: false },
+  { id: "mood_truecrime", label: "True Crime",            description: "Crime docs & investigations", weight: 0,  enabled: false },
+  { id: "mood_reality",   label: "Reality TV",            description: "Competition & reality shows", weight: 0,  enabled: false },
+  { id: "mood_thriller",  label: "Thriller / Mystery",    description: "Suspense and whodunits",      weight: 0,  enabled: false },
 ];
 
+// Preset param sets per profile
+const MATT_PARAMS = ALL_PARAMS.map(p => ({
+  ...p,
+  enabled: ["rating","hidden_gem","short_runtime","mood_cerebral","mood_epic"].includes(p.id),
+  weight:  p.id === "rating" ? 35 : p.id === "hidden_gem" ? 15 : p.id === "short_runtime" ? 10
+         : p.id === "mood_cerebral" ? 20 : p.id === "mood_epic" ? 20 : p.weight,
+}));
+
+const WIFE_PARAMS = ALL_PARAMS.map(p => ({
+  ...p,
+  enabled: ["rating","mood_romance","mood_romcom","mood_funny","mood_truecrime","mood_reality"].includes(p.id),
+  weight:  p.id === "rating" ? 25 : p.id === "mood_romance" ? 20 : p.id === "mood_romcom" ? 20
+         : p.id === "mood_funny" ? 15 : p.id === "mood_truecrime" ? 15 : p.id === "mood_reality" ? 15 : p.weight,
+}));
+
+const DEFAULT_PROFILES = [
+  { id: "matt", name: "Matt",  params: MATT_PARAMS, filterType: "all", sortBy: "score", dismissed: [] },
+  { id: "wife", name: "Wife",  params: WIFE_PARAMS, filterType: "all", sortBy: "score", dismissed: [] },
+];
+
+function loadProfiles() {
+  try {
+    const stored = localStorage.getItem("streamrank_profiles");
+    if (stored) return JSON.parse(stored);
+  } catch { /* ignore */ }
+  return DEFAULT_PROFILES;
+}
+
+function saveProfiles(profiles) {
+  try { localStorage.setItem("streamrank_profiles", JSON.stringify(profiles)); } catch { /* ignore */ }
+}
+
+// ── Scoring ────────────────────────────────────────────────────────────────────
 function scoreItem(item, params) {
   const active = params.filter(p => p.enabled && p.weight > 0);
   const totalW = active.reduce((s, p) => s + p.weight, 0);
@@ -38,15 +76,20 @@ function scoreItem(item, params) {
   let total = 0;
   for (const p of active) {
     let s = 0;
-    if      (p.id === "rating")        s = (item.rating ?? 50) / 100;
-    else if (p.id === "hidden_gem")    s = (item.rating ?? 0) > 80 && (item.popularity ?? 100) < 70 ? 1 : 0;
-    else if (p.id === "family")        s = item.family ? 1 : 0;
-    else if (p.id === "short_runtime") s = item.type === "series"
-      ? Math.max(0, 1 - ((item.runtime ?? 45) - 20) / 60) : 0;
-    else if (p.id === "mood_cerebral") s = (item.mood ?? []).includes("cerebral") ? 1 : 0;
-    else if (p.id === "mood_funny")    s = (item.mood ?? []).includes("funny")    ? 1 : 0;
-    else if (p.id === "mood_epic")     s = (item.mood ?? []).includes("epic")     ? 1 : 0;
-    else if (p.id === "recency")       s = Math.max(0, ((item.year ?? 2018) - 2015) / 10);
+    const mood = item.mood ?? [];
+    if      (p.id === "rating")         s = (item.rating ?? 50) / 100;
+    else if (p.id === "hidden_gem")     s = (item.rating ?? 0) > 80 && (item.popularity ?? 100) < 70 ? 1 : 0;
+    else if (p.id === "family")         s = item.family ? 1 : 0;
+    else if (p.id === "short_runtime")  s = item.type === "series" ? Math.max(0, 1 - ((item.runtime ?? 45) - 20) / 60) : 0;
+    else if (p.id === "recency")        s = Math.max(0, ((item.year ?? 2018) - 2015) / 10);
+    else if (p.id === "mood_cerebral")  s = mood.includes("cerebral")  ? 1 : 0;
+    else if (p.id === "mood_epic")      s = mood.includes("epic")      ? 1 : 0;
+    else if (p.id === "mood_funny")     s = mood.includes("funny")     ? 1 : 0;
+    else if (p.id === "mood_romance")   s = mood.includes("romance")   ? 1 : 0;
+    else if (p.id === "mood_romcom")    s = mood.includes("romcom")    ? 1 : 0;
+    else if (p.id === "mood_truecrime") s = mood.includes("truecrime") ? 1 : 0;
+    else if (p.id === "mood_reality")   s = mood.includes("reality")   ? 1 : 0;
+    else if (p.id === "mood_thriller")  s = mood.includes("intense")   ? 1 : 0;
     total += s * p.weight;
   }
   return Math.round((total / totalW) * 100);
@@ -56,12 +99,24 @@ function scoreItem(item, params) {
 function inferMood(genres) {
   const g = genres.map(s => s.toLowerCase());
   const mood = [];
-  if (g.some(n => /thriller|mystery|crime|horror/.test(n)))       mood.push("intense");
-  if (g.some(n => /comedy/.test(n)))                               mood.push("funny");
-  if (g.some(n => /drama|history|biography|documentary/.test(n))) mood.push("cerebral");
-  if (g.some(n => /action|adventure|sci.?fi|fantasy/.test(n)))    mood.push("epic");
-  if (g.some(n => /romance|family|animation/.test(n)))            mood.push("heartwarming");
-  return mood.length ? mood : ["cerebral"];
+  const isComedy   = g.some(n => /comedy/.test(n));
+  const isRomance  = g.some(n => /romance/.test(n));
+  const isCrime    = g.some(n => /crime/.test(n));
+  const isDoc      = g.some(n => /documentary/.test(n));
+  const isReality  = g.some(n => /reality/.test(n));
+
+  if (g.some(n => /thriller|mystery|horror/.test(n)))            mood.push("intense");
+  if (isCrime)                                                    mood.push("intense");
+  if (isComedy)                                                   mood.push("funny");
+  if (g.some(n => /drama|history|biography/.test(n)) || isDoc)  mood.push("cerebral");
+  if (isDoc)                                                      mood.push("cerebral");
+  if (g.some(n => /action|adventure|sci.?fi|fantasy/.test(n)))  mood.push("epic");
+  if (g.some(n => /animation|family/.test(n)))                   mood.push("heartwarming");
+  if (isRomance)                                                  mood.push("romance");
+  if (isComedy && isRomance)                                      mood.push("romcom");
+  if (isCrime && (isDoc || isReality))                           mood.push("truecrime");
+  if (isReality)                                                  mood.push("reality");
+  return mood.length ? [...new Set(mood)] : ["cerebral"];
 }
 
 function normalizeShow(show, serviceId) {
@@ -90,7 +145,6 @@ function normalizeShow(show, serviceId) {
   };
 }
 
-// Calls the local Express proxy — no CORS, no key in browser
 async function fetchServiceCatalog(serviceId) {
   const res = await fetch(`/api/catalog?service=${serviceId}`);
   if (!res.ok) {
@@ -125,7 +179,6 @@ function ScoreMeter({ score, size = 50 }) {
   );
 }
 
-// ServiceBadge is optionally clickable when a deepLink is provided
 function ServiceBadge({ service, href }) {
   const cfg = SERVICE_CONFIG[service];
   if (!cfg) return null;
@@ -167,7 +220,6 @@ function ContentCard({ item, score, rank, onDismiss, tmdb }) {
         <span style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: 18, color: "#6B7280",
           width: 24, textAlign: "right", flexShrink: 0 }}>{rank}</span>
         <ScoreMeter score={score} size={46} />
-        {/* Poster thumbnail */}
         <div style={{ width: 36, height: 54, flexShrink: 0, borderRadius: 4, overflow: "hidden",
           background: "#1F2937", display: "flex", alignItems: "center", justifyContent: "center" }}>
           {poster
@@ -194,7 +246,7 @@ function ContentCard({ item, score, rank, onDismiss, tmdb }) {
           </div>
         </div>
         <div style={{ display: "flex", gap: 10, flexShrink: 0, alignItems: "center" }}>
-          {tmdb?.rtScore !== null && tmdb?.rtScore !== undefined && (
+          {tmdb?.rtScore != null && (
             <div style={{ textAlign: "center", minWidth: 36 }}>
               <div style={{ fontSize: 9, color: "#9CA3AF", textTransform: "uppercase",
                 letterSpacing: "0.07em", fontFamily: "Inter,sans-serif" }}>
@@ -210,7 +262,7 @@ function ContentCard({ item, score, rank, onDismiss, tmdb }) {
             <div style={{ fontSize: 9, color: "#9CA3AF", textTransform: "uppercase",
               letterSpacing: "0.07em", fontFamily: "Inter,sans-serif" }}>Score</div>
             <div style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: 14,
-              color: displayRating !== null && displayRating >= 80 ? "#22C55E" : "#C4B5FD" }}>
+              color: displayRating != null && displayRating >= 80 ? "#22C55E" : "#C4B5FD" }}>
               {displayRating ?? "—"}
             </div>
           </div>
@@ -233,7 +285,6 @@ function ContentCard({ item, score, rank, onDismiss, tmdb }) {
               borderRadius: 4, flexShrink: 0 }} />
           )}
           <div style={{ flex: 1 }}>
-            {/* Ratings row in expanded view */}
             {(tmdb?.rtScore != null || tmdb?.imdbRating != null || tmdb?.metascore != null) && (
               <div style={{ display: "flex", gap: 12, marginBottom: 7, flexWrap: "wrap" }}>
                 {tmdb.rtScore != null && (
@@ -319,8 +370,7 @@ function StatusDot({ status }) {
   return (
     <div style={{ width: 7, height: 7, borderRadius: "50%", flexShrink: 0,
       background: colors[status] ?? "#4B5563",
-      boxShadow: status === "loading" ? "0 0 5px #F59E0B" : status === "loaded" ? "0 0 5px #22C55E88" : "none",
-      animation: status === "loading" ? "spin 1s linear infinite" : "none" }} />
+      boxShadow: status === "loading" ? "0 0 5px #F59E0B" : status === "loaded" ? "0 0 5px #22C55E88" : "none" }} />
   );
 }
 
@@ -381,7 +431,7 @@ function RefreshControl({ svcKey, refreshRate, onRateChange, status, lastFetched
   );
 }
 
-function AIInsight({ params, scored }) {
+function AIInsight({ params, scored, profileName }) {
   const [text, setText] = useState("");
   const [loading, setLoading] = useState(false);
   const [shown, setShown] = useState(false);
@@ -389,7 +439,7 @@ function AIInsight({ params, scored }) {
   const run = async () => {
     setLoading(true); setShown(true);
     const top5 = scored.slice(0, 5).map(s =>
-      `${s.item.title} (my score: ${s.score}, on ${s.item.services.map(svc => SERVICE_CONFIG[svc]?.label).join("/")})`
+      `${s.item.title} (score: ${s.score}, on ${s.item.services.map(svc => SERVICE_CONFIG[svc]?.label).join("/")})`
     ).join(", ");
     const ps = params.filter(p => p.enabled && p.weight > 0)
       .map(p => `${p.label}(${p.weight})`).join(", ");
@@ -401,7 +451,7 @@ function AIInsight({ params, scored }) {
           model: "claude-sonnet-4-6",
           max_tokens: 1000,
           messages: [{ role: "user", content:
-            `You're a streaming content advisor. The user's scoring weights are: ${ps}. ` +
+            `You're a streaming content advisor for ${profileName}. Their scoring weights are: ${ps}. ` +
             `Their top 5 right now: ${top5}. In 2-3 sentences, describe what their taste ` +
             `profile reveals, then give one specific watch-first pick with a brief reason. ` +
             `Conversational and direct.`
@@ -444,24 +494,124 @@ function AIInsight({ params, scored }) {
   );
 }
 
+// ── Profile switcher ───────────────────────────────────────────────────────────
+function ProfileSwitcher({ profiles, activeId, onSwitch, onAdd, onRename, onDelete }) {
+  const [editing, setEditing] = useState(null); // profileId being renamed
+  const [draft, setDraft] = useState("");
+
+  const commitRename = (id) => {
+    if (draft.trim()) onRename(id, draft.trim());
+    setEditing(null);
+  };
+
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+      {profiles.map(p => (
+        <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 3 }}>
+          {editing === p.id ? (
+            <input
+              autoFocus
+              value={draft}
+              onChange={e => setDraft(e.target.value)}
+              onBlur={() => commitRename(p.id)}
+              onKeyDown={e => { if (e.key === "Enter") commitRename(p.id); if (e.key === "Escape") setEditing(null); }}
+              style={{ width: 70, fontSize: 12, padding: "2px 6px", borderRadius: 5,
+                border: "1px solid #7C3AED", background: "#1F2937", color: "#F9FAFB",
+                fontFamily: "Inter,sans-serif", outline: "none" }}
+            />
+          ) : (
+            <button
+              onClick={() => onSwitch(p.id)}
+              onDoubleClick={() => { setEditing(p.id); setDraft(p.name); }}
+              title="Double-click to rename"
+              style={{ padding: "4px 12px", borderRadius: 6, fontSize: 12, fontWeight: 600,
+                border: `1px solid ${activeId === p.id ? "#7C3AED" : "#1F2937"}`,
+                background: activeId === p.id ? "#2D1B6B" : "transparent",
+                color: activeId === p.id ? "#E9D5FF" : "#9CA3AF",
+                cursor: "pointer", fontFamily: "Inter,sans-serif" }}>
+              {p.name}
+            </button>
+          )}
+          {profiles.length > 1 && activeId === p.id && editing !== p.id && (
+            <button
+              onClick={() => onDelete(p.id)}
+              title="Delete profile"
+              style={{ fontSize: 11, color: "#4B5563", background: "transparent",
+                border: "none", cursor: "pointer", padding: "0 2px", lineHeight: 1 }}>
+              ×
+            </button>
+          )}
+        </div>
+      ))}
+      <button onClick={onAdd} title="Add profile"
+        style={{ padding: "4px 10px", borderRadius: 6, fontSize: 12, fontWeight: 600,
+          border: "1px solid #1F2937", background: "transparent",
+          color: "#6B7280", cursor: "pointer", fontFamily: "Inter,sans-serif" }}>
+        + Add
+      </button>
+    </div>
+  );
+}
+
 // ── Main App ───────────────────────────────────────────────────────────────────
 export default function App() {
-  const [serverOk,    setServerOk]    = useState(null);
-  const [serverInfo,  setServerInfo]  = useState(null);
-  const [params,      setParams]      = useState(DEFAULT_PARAMS);
-  const [catalog,     setCatalog]     = useState({});
-  const [statuses,    setStatuses]    = useState({});
-  const [lastFetched, setLastFetched] = useState({});
-  const [refreshRates,setRefreshRates]= useState({});
-  const [activeServices, setActiveServices] = useState(Object.keys(SERVICE_CONFIG));
-  const [filterType,  setFilterType]  = useState("all");
-  const [sortBy,      setSortBy]      = useState("score");
-  const [globalRate,  setGlobalRate]  = useState(null);
-  const [errorLog,    setErrorLog]    = useState([]);
-  const [dismissed,   setDismissed]   = useState(new Set());
-  const [tmdbCache,   setTmdbCache]   = useState({});
+  const [serverOk,      setServerOk]      = useState(null);
+  const [serverInfo,    setServerInfo]    = useState(null);
+  const [profiles,      setProfiles]      = useState(() => loadProfiles());
+  const [activeId,      setActiveId]      = useState(() => loadProfiles()[0].id);
+  const [catalog,       setCatalog]       = useState({});
+  const [statuses,      setStatuses]      = useState({});
+  const [lastFetched,   setLastFetched]   = useState({});
+  const [refreshRates,  setRefreshRates]  = useState({});
+  const [activeServices,setActiveServices]= useState(Object.keys(SERVICE_CONFIG));
+  const [globalRate,    setGlobalRate]    = useState(null);
+  const [errorLog,      setErrorLog]      = useState([]);
+  const [tmdbCache,     setTmdbCache]     = useState({});
   const tmdbQueue = useRef(new Set());
-  const timers = useRef({});
+  const timers    = useRef({});
+
+  // Active profile convenience
+  const profile = profiles.find(p => p.id === activeId) ?? profiles[0];
+  const params      = profile.params;
+  const filterType  = profile.filterType;
+  const sortBy      = profile.sortBy;
+  const dismissed   = new Set(profile.dismissed);
+
+  const updateProfile = useCallback((id, patch) => {
+    setProfiles(prev => {
+      const next = prev.map(p => p.id === id ? { ...p, ...patch } : p);
+      saveProfiles(next);
+      return next;
+    });
+  }, []);
+
+  const setParams     = (p)  => updateProfile(activeId, { params: typeof p === "function" ? p(params) : p });
+  const setFilterType = (ft) => updateProfile(activeId, { filterType: ft });
+  const setSortBy     = (s)  => updateProfile(activeId, { sortBy: s });
+
+  const dismiss = (item) => {
+    const key = `${item.title.toLowerCase().replace(/\s+/g, " ").trim()}|${item.type}|${item.year}`;
+    updateProfile(activeId, { dismissed: [...profile.dismissed, key] });
+  };
+  const restoreDismissed = () => updateProfile(activeId, { dismissed: [] });
+
+  const addProfile = () => {
+    const id = `profile_${Date.now()}`;
+    const newProfile = { id, name: "New Profile", params: ALL_PARAMS.map(p => ({ ...p, enabled: p.id === "rating", weight: p.id === "rating" ? 35 : p.weight })), filterType: "all", sortBy: "score", dismissed: [] };
+    setProfiles(prev => { const next = [...prev, newProfile]; saveProfiles(next); return next; });
+    setActiveId(id);
+  };
+
+  const deleteProfile = (id) => {
+    setProfiles(prev => {
+      const next = prev.filter(p => p.id !== id);
+      saveProfiles(next);
+      return next;
+    });
+    setActiveId(p => p === id ? profiles.find(p2 => p2.id !== id)?.id ?? profiles[0].id : p);
+  };
+
+  const renameProfile = (id, name) => updateProfile(id, { name });
 
   useEffect(() => {
     fetch("/api/health")
@@ -486,20 +636,17 @@ export default function App() {
     }
   }, []);
 
-  // Fetch TMDB metadata for a batch of consolidated items
   const fetchTmdb = useCallback(async (items) => {
     const toFetch = items.filter(item => !tmdbQueue.current.has(item.groupKey));
     if (!toFetch.length) return;
     toFetch.forEach(item => tmdbQueue.current.add(item.groupKey));
-
-    // Process in batches of 10 to stay well under TMDB rate limit
     for (let i = 0; i < toFetch.length; i += 10) {
       const batch = toFetch.slice(i, i + 10);
       await Promise.all(batch.map(async (item) => {
         try {
-          const params = new URLSearchParams({ title: item.title, type: item.type });
-          if (item.year > 0) params.set("year", item.year);
-          const res = await fetch(`/api/tmdb?${params}`);
+          const p = new URLSearchParams({ title: item.title, type: item.type });
+          if (item.year > 0) p.set("year", item.year);
+          const res = await fetch(`/api/tmdb?${p}`);
           if (!res.ok) return;
           const data = await res.json();
           setTmdbCache(c => ({ ...c, [item.groupKey]: data }));
@@ -521,23 +668,16 @@ export default function App() {
   };
 
   useEffect(() => () => Object.values(timers.current).forEach(clearInterval), []);
+  useEffect(() => { if (serverOk) activeServices.forEach(svc => fetchSvc(svc)); }, [serverOk]); // eslint-disable-line
 
-  useEffect(() => {
-    if (serverOk) activeServices.forEach(svc => fetchSvc(svc));
-  }, [serverOk]); // eslint-disable-line
-
-  // Consolidate same title across services into one entry.
-  // Use the canonical show ID (stable across service queries) as primary key,
-  // falling back to normalized title+type so random-ID items still group by name.
+  // Consolidate same title across services
   const allItems = Object.entries(catalog)
     .filter(([svc]) => activeServices.includes(svc))
     .flatMap(([, items]) => items);
 
   const grouped = new Map();
   for (const item of allItems) {
-    // Normalize title: lowercase, collapse whitespace, strip leading/trailing spaces
     const normTitle = item.title.toLowerCase().replace(/\s+/g, " ").trim();
-    // Include year so two different shows with the same name don't collide
     const key = `${normTitle}|${item.type}|${item.year}`;
     if (grouped.has(key)) {
       const existing = grouped.get(key);
@@ -546,17 +686,11 @@ export default function App() {
         existing.deepLinks[item.service] = item.deepLink;
       }
     } else {
-      grouped.set(key, {
-        ...item,
-        groupKey: key,
-        services: [item.service],
-        deepLinks: { [item.service]: item.deepLink },
-      });
+      grouped.set(key, { ...item, groupKey: key, services: [item.service], deepLinks: { [item.service]: item.deepLink } });
     }
   }
   const consolidated = Array.from(grouped.values());
 
-  // Kick off TMDB enrichment whenever the consolidated list changes
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { if (consolidated.length) fetchTmdb(consolidated); }, [consolidated.length]);
 
@@ -571,8 +705,6 @@ export default function App() {
 
   const totalLoaded = Object.values(catalog).flat().length;
   const anyLoading  = Object.values(statuses).some(s => s === "loading");
-
-  const dismiss = (item) => setDismissed(prev => new Set([...prev, dismissKey(item)]));
 
   return (
     <>
@@ -600,10 +732,21 @@ export default function App() {
               Personal Scoring Engine
             </span>
           </div>
+
+          {/* Profile switcher */}
+          <ProfileSwitcher
+            profiles={profiles}
+            activeId={activeId}
+            onSwitch={setActiveId}
+            onAdd={addProfile}
+            onRename={renameProfile}
+            onDelete={deleteProfile}
+          />
+
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             {serverOk === null && (
               <span style={{ fontSize: 11, color: "#9CA3AF", animation: "pulse 1s infinite" }}>
-                connecting to server…
+                connecting…
               </span>
             )}
             {serverOk === true && (
@@ -611,20 +754,14 @@ export default function App() {
                 <div style={{ width: 7, height: 7, borderRadius: "50%", background: "#22C55E",
                   boxShadow: "0 0 5px #22C55E" }} />
                 <span style={{ fontSize: 11, color: "#9CA3AF" }}>
-                  {serverInfo?.streaming ?? "?"} ·{" "}
-                  {totalLoaded} titles loaded
-                  {anyLoading &&
-                    <span style={{ color: "#F59E0B", marginLeft: 6, animation: "pulse 1s infinite" }}>
-                      fetching…
-                    </span>
-                  }
+                  {totalLoaded} titles
+                  {anyLoading && <span style={{ color: "#F59E0B", marginLeft: 6, animation: "pulse 1s infinite" }}>fetching…</span>}
                 </span>
               </>
             )}
             {serverOk === false && (
               <span style={{ fontSize: 11, color: "#EF4444" }}>
-                ✗ Server not running — run <code style={{ background: "#1F2937", padding: "1px 5px",
-                  borderRadius: 3, fontSize: 10 }}>npm run dev</code>
+                ✗ Server offline — run <code style={{ background: "#1F2937", padding: "1px 5px", borderRadius: 3, fontSize: 10 }}>npm run dev</code>
               </span>
             )}
           </div>
@@ -643,18 +780,13 @@ export default function App() {
                 <span style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: 11,
                   letterSpacing: "0.1em", color: "#9CA3AF" }}>SERVICES & REFRESH</span>
                 <button onClick={() => setActiveServices(
-                  activeServices.length === Object.keys(SERVICE_CONFIG).length
-                    ? [] : Object.keys(SERVICE_CONFIG)
-                )} style={{ fontSize: 10, color: "#9CA3AF", background: "transparent",
-                  border: "none", cursor: "pointer" }}>
+                  activeServices.length === Object.keys(SERVICE_CONFIG).length ? [] : Object.keys(SERVICE_CONFIG)
+                )} style={{ fontSize: 10, color: "#9CA3AF", background: "transparent", border: "none", cursor: "pointer" }}>
                   {activeServices.length === Object.keys(SERVICE_CONFIG).length ? "none" : "all"}
                 </button>
               </div>
-
-              {/* Global rate */}
               <div style={{ display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap", marginBottom: 8 }}>
-                <span style={{ fontSize: 10, color: "#9CA3AF", fontWeight: 600,
-                  textTransform: "uppercase", letterSpacing: "0.06em" }}>All:</span>
+                <span style={{ fontSize: 10, color: "#9CA3AF", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em" }}>All:</span>
                 {REFRESH_OPTIONS.map(opt => (
                   <button key={opt.label} onClick={() => setGlobal(opt.ms)} style={{
                     fontSize: 10, padding: "2px 6px", borderRadius: 4, cursor: "pointer",
@@ -666,8 +798,6 @@ export default function App() {
                   </button>
                 ))}
               </div>
-
-              {/* Per-service rows */}
               {Object.entries(SERVICE_CONFIG).map(([svc, cfg]) => (
                 <div key={svc} style={{ display: "flex", alignItems: "flex-start", gap: 5 }}>
                   <button onClick={() => setActiveServices(prev =>
@@ -694,7 +824,7 @@ export default function App() {
             <div style={{ borderTop: "1px solid #111827", paddingTop: 11 }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
                 <span style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: 11,
-                  letterSpacing: "0.1em", color: "#9CA3AF" }}>SCORING PARAMETERS</span>
+                  letterSpacing: "0.1em", color: "#9CA3AF" }}>SCORING — {profile.name.toUpperCase()}</span>
                 <span style={{ fontSize: 10, color: "#9CA3AF" }}>
                   {params.filter(p => p.enabled && p.weight > 0).length} active
                 </span>
@@ -722,13 +852,12 @@ export default function App() {
               </div>
             </div>
 
-            {/* Dismissed count */}
+            {/* Dismissed */}
             {dismissed.size > 0 && (
               <div style={{ marginTop: 11, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                 <span style={{ fontSize: 10, color: "#9CA3AF" }}>{dismissed.size} title{dismissed.size !== 1 ? "s" : ""} hidden</span>
-                <button onClick={() => setDismissed(new Set())} style={{
-                  fontSize: 10, color: "#A78BFA", background: "transparent",
-                  border: "none", cursor: "pointer", textDecoration: "underline" }}>
+                <button onClick={restoreDismissed} style={{ fontSize: 10, color: "#A78BFA",
+                  background: "transparent", border: "none", cursor: "pointer", textDecoration: "underline" }}>
                   restore all
                 </button>
               </div>
@@ -737,38 +866,31 @@ export default function App() {
             {/* Error log */}
             {errorLog.length > 0 && (
               <div style={{ marginTop: 12, borderTop: "1px solid #111827", paddingTop: 10 }}>
-                <div style={{ fontSize: 10, color: "#EF4444", fontWeight: 600,
-                  letterSpacing: "0.07em", marginBottom: 5 }}>ERRORS</div>
+                <div style={{ fontSize: 10, color: "#EF4444", fontWeight: 600, letterSpacing: "0.07em", marginBottom: 5 }}>ERRORS</div>
                 {errorLog.map((e, i) => (
-                  <div key={i} style={{ fontSize: 10, color: "#9CA3AF",
-                    fontFamily: "Inter,sans-serif", marginBottom: 3, lineHeight: 1.5 }}>
+                  <div key={i} style={{ fontSize: 10, color: "#9CA3AF", fontFamily: "Inter,sans-serif", marginBottom: 3, lineHeight: 1.5 }}>
                     <span style={{ color: "#EF4444" }}>{SERVICE_CONFIG[e.svc]?.label}</span>
                     {" "}{e.t}: {e.msg.slice(0, 100)}
                   </div>
                 ))}
                 <button onClick={() => setErrorLog([])} style={{ fontSize: 10, color: "#6B7280",
-                  background: "transparent", border: "none", cursor: "pointer", marginTop: 2 }}>
-                  clear
-                </button>
+                  background: "transparent", border: "none", cursor: "pointer", marginTop: 2 }}>clear</button>
               </div>
             )}
           </div>
 
           {/* ── Main Canvas ── */}
           <div style={{ flex: 1, padding: "13px 16px", overflowY: "auto" }}>
-
             {serverOk === false && (
               <div style={{ display: "flex", flexDirection: "column", alignItems: "center",
                 justifyContent: "center", height: "60vh", gap: 14, textAlign: "center" }}>
                 <div style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: 28,
                   color: "#4B5563", letterSpacing: "0.05em" }}>SERVER NOT RUNNING</div>
                 <div style={{ fontSize: 13, color: "#9CA3AF", lineHeight: 1.8, maxWidth: 380 }}>
-                  In your terminal, from the <code style={{ background: "#1F2937", padding: "1px 5px",
-                    borderRadius: 3 }}>streamrank/</code> folder, run:
+                  In your terminal, from the <code style={{ background: "#1F2937", padding: "1px 5px", borderRadius: 3 }}>streamrank/</code> folder, run:
                   <br /><br />
-                  <code style={{ background: "#111827", border: "1px solid #1F2937",
-                    padding: "8px 16px", borderRadius: 6, display: "inline-block",
-                    color: "#A78BFA", fontSize: 13 }}>npm run dev</code>
+                  <code style={{ background: "#111827", border: "1px solid #1F2937", padding: "8px 16px",
+                    borderRadius: 6, display: "inline-block", color: "#A78BFA", fontSize: 13 }}>npm run dev</code>
                 </div>
               </div>
             )}
@@ -780,7 +902,7 @@ export default function App() {
                     <span style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: 17,
                       letterSpacing: "0.05em", color: "#E5E7EB" }}>{scored.length} TITLES</span>
                     <span style={{ fontSize: 11, color: "#9CA3AF", marginLeft: 7 }}>
-                      ranked by your parameters
+                      ranked for {profile.name}
                     </span>
                   </div>
                   <div style={{ display: "flex", gap: 5, alignItems: "center" }}>
@@ -804,12 +926,11 @@ export default function App() {
                     FETCHING CATALOGS…
                   </div>
                 )}
-
                 {!anyLoading && scored.length === 0 && totalLoaded > 0 && (
                   <div style={{ textAlign: "center", padding: "40px 0",
                     fontFamily: "'Bebas Neue',sans-serif", fontSize: 18, color: "#4B5563",
                     letterSpacing: "0.05em" }}>
-                    NO MATCHES — TRY ADJUSTING TYPE FILTER OR ENABLING MORE SERVICES
+                    NO MATCHES — TRY ADJUSTING FILTERS OR ENABLING MORE SERVICES
                   </div>
                 )}
 
@@ -826,10 +947,9 @@ export default function App() {
                   ))}
                 </div>
 
-                {scored.length > 0 && <AIInsight params={params} scored={scored} />}
+                {scored.length > 0 && <AIInsight params={params} scored={scored} profileName={profile.name} />}
 
-                <div style={{ marginTop: 14, textAlign: "center", fontSize: 10,
-                  color: "#4B5563", paddingBottom: 20 }}>
+                <div style={{ marginTop: 14, textAlign: "center", fontSize: 10, color: "#4B5563", paddingBottom: 20 }}>
                   Streaming data:{" "}
                   <a href="https://www.movieofthenight.com/about/api" target="_blank"
                     rel="noopener noreferrer" style={{ color: "#6B7280" }}>
