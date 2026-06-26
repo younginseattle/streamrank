@@ -59,7 +59,23 @@ const DEFAULT_PROFILES = [
 function loadProfiles() {
   try {
     const stored = localStorage.getItem("streamrank_profiles");
-    if (stored) return JSON.parse(stored);
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      // Migrate stored profiles: fill in any fields added after initial save
+      return parsed.map(p => {
+        // Ensure all params from ALL_PARAMS exist (new params added later won't be in old saves)
+        const storedParamIds = new Set((p.params ?? []).map(x => x.id));
+        const mergedParams = [
+          ...(p.params ?? []),
+          ...ALL_PARAMS.filter(ap => !storedParamIds.has(ap.id)),
+        ];
+        return {
+          ...p,
+          params: mergedParams,
+          minScore: p.minScore ?? 0,
+        };
+      });
+    }
   } catch { /* ignore */ }
   return DEFAULT_PROFILES;
 }
@@ -706,7 +722,7 @@ export default function App() {
     .filter(({ score }) => score >= minScore)
     .sort((a, b) => sortBy === "score" ? b.score - a.score : (b.item.rating ?? 0) - (a.item.rating ?? 0));
 
-  const totalLoaded = Object.values(catalog).flat().length;
+  const totalRaw    = Object.values(catalog).flat().length;
   const anyLoading  = Object.values(statuses).some(s => s === "loading");
 
   return (
@@ -757,7 +773,7 @@ export default function App() {
                 <div style={{ width: 7, height: 7, borderRadius: "50%", background: "#22C55E",
                   boxShadow: "0 0 5px #22C55E" }} />
                 <span style={{ fontSize: 11, color: "#9CA3AF" }}>
-                  {totalLoaded} titles
+                  {consolidated.length} titles
                   {anyLoading && <span style={{ color: "#F59E0B", marginLeft: 6, animation: "pulse 1s infinite" }}>fetching…</span>}
                 </span>
               </>
@@ -906,6 +922,11 @@ export default function App() {
                       letterSpacing: "0.05em", color: "#E5E7EB" }}>{scored.length} TITLES</span>
                     <span style={{ fontSize: 11, color: "#9CA3AF", marginLeft: 7 }}>
                       ranked for {profile.name}
+                      {minScore > 0 && consolidated.length > scored.length && (
+                        <span style={{ marginLeft: 5, color: "#6B7280" }}>
+                          ({consolidated.length - scored.length} filtered below {minScore})
+                        </span>
+                      )}
                     </span>
                   </div>
                   <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
