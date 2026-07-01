@@ -754,9 +754,24 @@ export default function App() {
   const dismissKey = (item) =>
     `${item.title.toLowerCase().replace(/\s+/g, " ").trim()}|${item.type}|${item.year}`;
 
+  // Mood param id → mood tag used in inferMood()
+  const MOOD_TAG = {
+    mood_cerebral: "cerebral", mood_epic: "epic",      mood_funny: "funny",
+    mood_romance:  "romance",  mood_romcom: "romcom",  mood_truecrime: "truecrime",
+    mood_reality:  "reality",  mood_thriller: "intense",
+  };
+  const enabledMoodIds = params.filter(p => p.enabled && p.weight > 0 && MOOD_TAG[p.id]).map(p => p.id);
+
   const scored = consolidated
     .filter(i => filterType === "all" || i.type === filterType)
     .filter(i => !dismissed.has(dismissKey(i)))
+    // If any mood params are active, require at least one to match — prevents
+    // high-rated action/sci-fi from slipping through on recency+rating alone
+    .filter(item => {
+      if (enabledMoodIds.length === 0) return true;
+      const mood = item.mood ?? [];
+      return enabledMoodIds.some(id => mood.includes(MOOD_TAG[id]));
+    })
     .map(item => ({ item, score: scoreItem(item, params, tmdbCache[item.groupKey] ?? null) }))
     .filter(({ score }) => score >= minScore)
     .sort((a, b) => sortBy === "score" ? b.score - a.score : (b.item.rating ?? 0) - (a.item.rating ?? 0));
