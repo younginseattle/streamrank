@@ -39,8 +39,8 @@ app.get('/api/catalog', async (req, res) => {
     return res.status(500).json({ error: 'No streaming API key configured. Check your .env file.' });
   }
 
-  const { service } = req.query;
-  if (!service) return res.status(400).json({ error: 'Missing ?service= parameter' });
+  const { service, genres } = req.query;
+  if (!service && !genres) return res.status(400).json({ error: 'Missing ?service= or ?genres= parameter' });
 
   const maxResults = Math.min(parseInt(req.query.limit ?? '100', 10), 250);
   const pageSize   = 20;
@@ -53,7 +53,8 @@ app.get('/api/catalog', async (req, res) => {
     while (allShows.length < maxResults) {
       const url = new URL(`${cfg.baseUrl}/shows/search/filters`);
       url.searchParams.set('country',            'us');
-      url.searchParams.set('catalogs',           service);
+      if (service) url.searchParams.set('catalogs', service);
+      if (genres)  url.searchParams.set('genres',   genres);
       url.searchParams.set('order_by',           'rating');
       url.searchParams.set('order_direction',    'desc');
       url.searchParams.set('series_granularity', 'show');

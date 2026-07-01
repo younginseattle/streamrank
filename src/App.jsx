@@ -68,7 +68,7 @@ const DEFAULT_PROFILES = [
   { id: "wife", name: "Wife",  params: WIFE_PARAMS, filterType: "all", sortBy: "score", minScore: 30, dismissed: [] },
 ];
 
-const PROFILE_SCHEMA_VERSION = 5; // bump when presets or params change
+const PROFILE_SCHEMA_VERSION = 6; // bump when presets or params change
 
 function loadProfiles() {
   try {
@@ -193,6 +193,18 @@ function normalizeShow(show, serviceId) {
   };
 }
 
+// Maps mood param ids to MOTN API genre strings
+const MOOD_TO_API_GENRES = {
+  mood_cerebral:  ["drama", "history", "documentary", "biography"],
+  mood_epic:      ["action", "adventure", "sci-fi", "fantasy"],
+  mood_funny:     ["comedy"],
+  mood_romance:   ["romance", "drama"],
+  mood_romcom:    ["romance", "comedy"],
+  mood_truecrime: ["crime", "documentary"],
+  mood_reality:   ["reality"],
+  mood_thriller:  ["thriller", "mystery", "horror"],
+};
+
 async function fetchServiceCatalog(serviceId) {
   const res = await fetch(`/api/catalog?service=${serviceId}`);
   if (!res.ok) {
@@ -201,7 +213,27 @@ async function fetchServiceCatalog(serviceId) {
   }
   const data = await res.json();
   const shows = Array.isArray(data.shows) ? data.shows : Array.isArray(data) ? data : [];
-  return shows.map(show => normalizeShow(show, serviceId));
+  return shows.map(show => normalizeShow(show, show.streamingOptions?.us?.[0]?.service?.id ?? serviceId));
+}
+
+async function fetchGenreCatalog(genreGroups) {
+  // Fetch top content per genre group across all services, merge results
+  const allShows = [];
+  for (const genres of genreGroups) {
+    try {
+      const res = await fetch(`/api/catalog?genres=${encodeURIComponent(genres)}&limit=50`);
+      if (!res.ok) continue;
+      const data = await res.json();
+      const shows = Array.isArray(data.shows) ? data.shows : [];
+      for (const show of shows) {
+        const opts = show.streamingOptions?.us ?? [];
+        for (const opt of opts) {
+          allShows.push(normalizeShow(show, opt.service?.id ?? "unknown"));
+        }
+      }
+    } catch { /* skip failed genre groups */ }
+  }
+  return allShows;
 }
 
 // ── UI Components ──────────────────────────────────────────────────────────────
@@ -248,7 +280,7 @@ function ServiceBadge({ service, href }) {
   return <span style={style}>{cfg.label}</span>;
 }
 
-function ContentCard({ item, score, rank, onDismiss, tmdb }) {
+function ContentCard({ item, score, rank, onDismiss, tmdb, breakdown }) {
   const [open, setOpen] = useState(false);
   const primaryService = item.services[0];
   const cfg = SERVICE_CONFIG[primaryService] ?? { color: "#7C3AED" };
@@ -362,13 +394,20 @@ function ContentCard({ item, score, rank, onDismiss, tmdb }) {
             <div style={{ fontSize: 12, color: "#C4B5FD", fontFamily: "Inter,sans-serif", lineHeight: 1.65 }}>
               {overview}
             </div>
-            {item.mood.length > 0 && (
-              <div style={{ marginTop: 6, display: "flex", gap: 5, flexWrap: "wrap" }}>
-                {item.mood.map(m => (
-                  <span key={m} style={{ fontSize: 10, padding: "2px 6px", borderRadius: 3,
-                    background: "#1F2937", color: "#9CA3AF", textTransform: "uppercase",
-                    letterSpacing: "0.06em", fontWeight: 600 }}>{m}</span>
-                ))}
+            {breakdown?.length > 0 && (
+              <div style={{ marginTop: 8 }}>
+                <div style={{ fontSize: 9, color: "#6B7280", textTransform: "uppercase",
+                  letterSpacing: "0.08em", marginBottom: 4 }}>Why this score</div>
+                <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                  {breakdown.map(b => (
+                    <span key={b.id} style={{ fontSize: 10, padding: "2px 6px", borderRadius: 3,
+                      background: b.matched ? "#14532D" : "#1F2937",
+                      color: b.matched ? "#4ADE80" : "#4B5563",
+                      fontWeight: 600, letterSpacing: "0.04em" }}>
+                      {b.matched ? "✓" : "✗"} {b.label}
+                    </span>
+                  ))}
+                </div>
               </div>
             )}
           </div>
@@ -622,6 +661,8 @@ export default function App() {
   const [globalRate,    setGlobalRate]    = useState(null);
   const [errorLog,      setErrorLog]      = useState([]);
   const [tmdbCache,     setTmdbCache]     = useState({});
+  const [genreItems,    setGenreItems]    = useState([]);
+  const [genreStatus,   setGenreStatus]   = useState("idle");
   const tmdbQueue = useRef(new Set());
   const timers    = useRef({});
 
@@ -727,10 +768,33 @@ export default function App() {
   useEffect(() => () => Object.values(timers.current).forEach(clearInterval), []);
   useEffect(() => { if (serverOk) activeServices.forEach(svc => fetchSvc(svc)); }, [serverOk]); // eslint-disable-line
 
-  // Consolidate same title across services
-  const allItems = Object.entries(catalog)
-    .filter(([svc]) => activeServices.includes(svc))
-    .flatMap(([, items]) => items);
+  // Genre-aware boost: fetch top content by genre across all services
+  useEffect(() => {
+    if (!serverOk) return;
+    // Collect all unique genres needed across all profiles
+    const allMoodIds = new Set(
+      profiles.flatMap(p => p.params.filter(x => x.enabled && x.weight > 0 && MOOD_TO_API_GENRES[x.id]).map(x => x.id))
+    );
+    if (allMoodIds.size === 0) return;
+    // Group into batches to minimize API calls
+    const genreGroups = [
+      ["drama", "romance"],
+      ["comedy"],
+      ["crime", "documentary"],
+      ["reality"],
+    ];
+    setGenreStatus("loading");
+    fetchGenreCatalog(genreGroups).then(items => {
+      setGenreItems(items);
+      setGenreStatus("loaded");
+    }).catch(() => setGenreStatus("error"));
+  }, [serverOk]); // eslint-disable-line
+
+  // Consolidate same title across services + genre boost items
+  const allItems = [
+    ...Object.entries(catalog).filter(([svc]) => activeServices.includes(svc)).flatMap(([, items]) => items),
+    ...genreItems,
+  ];
 
   const grouped = new Map();
   for (const item of allItems) {
@@ -738,15 +802,17 @@ export default function App() {
     const key = `${normTitle}|${item.type}|${item.year}`;
     if (grouped.has(key)) {
       const existing = grouped.get(key);
-      if (!existing.services.includes(item.service)) {
+      if (item.service && item.service !== "unknown" && !existing.services.includes(item.service)) {
         existing.services.push(item.service);
-        existing.deepLinks[item.service] = item.deepLink;
+        if (item.deepLink) existing.deepLinks[item.service] = item.deepLink;
       }
     } else {
-      grouped.set(key, { ...item, groupKey: key, services: [item.service], deepLinks: { [item.service]: item.deepLink } });
+      const services = item.service && item.service !== "unknown" ? [item.service] : [];
+      const deepLinks = item.deepLink ? { [item.service]: item.deepLink } : {};
+      grouped.set(key, { ...item, groupKey: key, services, deepLinks });
     }
   }
-  const consolidated = Array.from(grouped.values());
+  const consolidated = Array.from(grouped.values()).filter(i => i.services.length > 0);
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { if (consolidated.length) fetchTmdb(consolidated); }, [consolidated.length]);
@@ -765,14 +831,26 @@ export default function App() {
   const scored = consolidated
     .filter(i => filterType === "all" || i.type === filterType)
     .filter(i => !dismissed.has(dismissKey(i)))
-    // If any mood params are active, require at least one to match — prevents
-    // high-rated action/sci-fi from slipping through on recency+rating alone
-    .filter(item => {
-      if (enabledMoodIds.length === 0) return true;
-      const mood = item.mood ?? [];
-      return enabledMoodIds.some(id => mood.includes(MOOD_TAG[id]));
+    .map(item => {
+      // Enrich mood with TMDB genres for better accuracy
+      const tmdb = tmdbCache[item.groupKey] ?? null;
+      const enrichedMood = tmdb?.genres?.length
+        ? inferMood([...new Set([...item.genres, ...tmdb.genres])])
+        : item.mood;
+      const enriched = { ...item, mood: enrichedMood };
+      const score = scoreItem(enriched, params, tmdb);
+      // Score breakdown: which enabled mood params matched
+      const breakdown = enabledMoodIds.map(id => ({
+        id, label: params.find(p => p.id === id)?.label ?? id,
+        matched: enrichedMood.includes(MOOD_TAG[id]),
+      }));
+      return { item: enriched, score, breakdown };
     })
-    .map(item => ({ item, score: scoreItem(item, params, tmdbCache[item.groupKey] ?? null) }))
+    // Require at least one mood match when mood params are active
+    .filter(({ item }) => {
+      if (enabledMoodIds.length === 0) return true;
+      return enabledMoodIds.some(id => item.mood.includes(MOOD_TAG[id]));
+    })
     .filter(({ score }) => score >= minScore)
     .sort((a, b) => sortBy === "score" ? b.score - a.score : (b.item.rating ?? 0) - (a.item.rating ?? 0));
 
@@ -1030,7 +1108,7 @@ export default function App() {
                 )}
 
                 <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                  {scored.map(({ item, score }, i) => (
+                  {scored.map(({ item, score, breakdown }, i) => (
                     <ContentCard
                       key={item.groupKey}
                       item={item}
@@ -1038,6 +1116,7 @@ export default function App() {
                       rank={i + 1}
                       onDismiss={() => dismiss(item)}
                       tmdb={tmdbCache[item.groupKey] ?? null}
+                      breakdown={breakdown}
                     />
                   ))}
                 </div>
