@@ -65,10 +65,10 @@ const WIFE_PARAMS = ALL_PARAMS.map(p => ({
 
 const DEFAULT_PROFILES = [
   { id: "matt", name: "Matt",  params: MATT_PARAMS, filterType: "all", sortBy: "score", minScore: 0,  dismissed: [] },
-  { id: "wife", name: "Wife",  params: WIFE_PARAMS, filterType: "all", sortBy: "score", minScore: 45, dismissed: [] },
+  { id: "wife", name: "Wife",  params: WIFE_PARAMS, filterType: "all", sortBy: "score", minScore: 30, dismissed: [] },
 ];
 
-const PROFILE_SCHEMA_VERSION = 4; // bump when presets or params change
+const PROFILE_SCHEMA_VERSION = 5; // bump when presets or params change
 
 function loadProfiles() {
   try {
@@ -378,7 +378,8 @@ function ContentCard({ item, score, rank, onDismiss, tmdb }) {
   );
 }
 
-function ParamSlider({ param, onChange }) {
+function ParamSlider({ param, onChange, totalWeight }) {
+  const pct = totalWeight > 0 && param.enabled ? Math.round((param.weight / totalWeight) * 100) : 0;
   return (
     <div style={{ padding: "8px 0", borderBottom: "1px solid #0D1117" }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
@@ -400,13 +401,18 @@ function ParamSlider({ param, onChange }) {
             </div>
           </div>
         </div>
-        <span style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: 16,
-          color: param.enabled ? "#7C3AED" : "#4B5563", minWidth: 24, textAlign: "right" }}>
-          {param.weight}
-        </span>
+        <div style={{ textAlign: "right", minWidth: 38 }}>
+          {param.enabled ? (
+            <span style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: 15, color: "#7C3AED" }}>
+              {pct}%
+            </span>
+          ) : (
+            <span style={{ fontSize: 10, color: "#374151", fontFamily: "Inter,sans-serif" }}>off</span>
+          )}
+        </div>
       </div>
       {param.enabled && (
-        <input type="range" min={0} max={50} step={5} value={param.weight}
+        <input type="range" min={5} max={50} step={5} value={param.weight}
           onChange={e => onChange({ ...param, weight: parseInt(e.target.value) })}
           style={{ width: "100%", accentColor: "#7C3AED", cursor: "pointer", height: 3 }} />
       )}
@@ -874,17 +880,20 @@ export default function App() {
 
             {/* Scoring Params */}
             <div style={{ borderTop: "1px solid #111827", paddingTop: 11 }}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 2 }}>
                 <span style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: 11,
                   letterSpacing: "0.1em", color: "#9CA3AF" }}>SCORING — {profile.name.toUpperCase()}</span>
-                <span style={{ fontSize: 10, color: "#9CA3AF" }}>
-                  {params.filter(p => p.enabled && p.weight > 0).length} active
-                </span>
               </div>
-              {params.map(p => (
-                <ParamSlider key={p.id} param={p}
-                  onChange={u => setParams(prev => prev.map(x => x.id === u.id ? u : x))} />
-              ))}
+              <div style={{ fontSize: 10, color: "#6B7280", fontFamily: "Inter,sans-serif", marginBottom: 7, lineHeight: 1.5 }}>
+                % = share of the final 0–100 score. Sliders adjust relative weight; they auto-normalize.
+              </div>
+              {(() => {
+                const totalWeight = params.filter(p => p.enabled && p.weight > 0).reduce((s, p) => s + p.weight, 0);
+                return params.map(p => (
+                  <ParamSlider key={p.id} param={p} totalWeight={totalWeight}
+                    onChange={u => setParams(prev => prev.map(x => x.id === u.id ? u : x))} />
+                ));
+              })()}
             </div>
 
             {/* Type filter */}
