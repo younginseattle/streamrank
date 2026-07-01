@@ -32,7 +32,7 @@ function getStreamingConfig() {
   return null;
 }
 
-// ── GET /api/catalog?service=netflix ──────────────────────────────────────
+// ── GET /api/catalog?service=netflix&limit=100 ────────────────────────────
 app.get('/api/catalog', async (req, res) => {
   const cfg = getStreamingConfig();
   if (!cfg) {
@@ -42,24 +42,44 @@ app.get('/api/catalog', async (req, res) => {
   const { service } = req.query;
   if (!service) return res.status(400).json({ error: 'Missing ?service= parameter' });
 
+  const maxResults = Math.min(parseInt(req.query.limit ?? '100', 10), 250);
+  const pageSize   = 20;
+
   try {
-    const url = new URL(`${cfg.baseUrl}/shows/search/filters`);
-    url.searchParams.set('country',            'us');
-    url.searchParams.set('catalogs',           service);
-    url.searchParams.set('order_by',           'rating');
-    url.searchParams.set('order_direction',    'desc');
-    url.searchParams.set('series_granularity', 'show');
+    const allShows = [];
+    let cursor     = null;
+    let pages      = 0;
 
-    const upstream = await fetch(url.toString(), { headers: cfg.headers });
+    while (allShows.length < maxResults) {
+      const url = new URL(`${cfg.baseUrl}/shows/search/filters`);
+      url.searchParams.set('country',            'us');
+      url.searchParams.set('catalogs',           service);
+      url.searchParams.set('order_by',           'rating');
+      url.searchParams.set('order_direction',    'desc');
+      url.searchParams.set('series_granularity', 'show');
+      url.searchParams.set('limit',              String(pageSize));
+      if (cursor) url.searchParams.set('cursor', cursor);
 
-    if (!upstream.ok) {
-      const text = await upstream.text().catch(() => '');
-      console.error(`[catalog] upstream ${upstream.status} for ${service}:`, text.slice(0, 300));
-      return res.status(upstream.status).json({ error: `Upstream error ${upstream.status}`, detail: text.slice(0, 300) });
+      const upstream = await fetch(url.toString(), { headers: cfg.headers });
+
+      if (!upstream.ok) {
+        const text = await upstream.text().catch(() => '');
+        console.error(`[catalog] upstream ${upstream.status} for ${service}:`, text.slice(0, 300));
+        if (allShows.length > 0) break;
+        return res.status(upstream.status).json({ error: `Upstream error ${upstream.status}`, detail: text.slice(0, 300) });
+      }
+
+      const data    = await upstream.json();
+      const shows   = Array.isArray(data.shows) ? data.shows : [];
+      allShows.push(...shows);
+      pages++;
+
+      cursor = data.nextCursor ?? data.cursor ?? null;
+      if (!cursor || shows.length < pageSize) break;
     }
 
-    const data = await upstream.json();
-    res.json(data);
+    console.log(`[catalog] ${service}: ${allShows.length} shows in ${pages} page(s)`);
+    res.json({ shows: allShows.slice(0, maxResults) });
   } catch (err) {
     console.error('[catalog] fetch error:', err.message);
     res.status(500).json({ error: err.message });
