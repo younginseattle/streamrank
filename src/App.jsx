@@ -58,31 +58,39 @@ const WIFE_PARAMS = ALL_PARAMS.map(p => ({
 
 const DEFAULT_PROFILES = [
   { id: "matt", name: "Matt",  params: MATT_PARAMS, filterType: "all", sortBy: "score", minScore: 0,  dismissed: [] },
-  { id: "wife", name: "Wife",  params: WIFE_PARAMS, filterType: "all", sortBy: "score", minScore: 25, dismissed: [] },
+  { id: "wife", name: "Wife",  params: WIFE_PARAMS, filterType: "all", sortBy: "score", minScore: 35, dismissed: [] },
 ];
+
+const PROFILE_SCHEMA_VERSION = 3; // bump when presets or params change
 
 function loadProfiles() {
   try {
     const stored = localStorage.getItem("streamrank_profiles");
     if (stored) {
       const parsed = JSON.parse(stored);
-      // Migrate stored profiles: fill in any fields added after initial save
       return parsed.map(p => {
-        // Ensure all params from ALL_PARAMS exist (new params added later won't be in old saves)
+        const preset = DEFAULT_PROFILES.find(d => d.id === p.id);
+        if (preset && (p._v ?? 0) < PROFILE_SCHEMA_VERSION) {
+          // Known preset is stale: refresh params/minScore but keep watched list and name
+          return {
+            ...preset,
+            name:      p.name ?? preset.name,
+            dismissed: p.dismissed ?? [],
+            _v:        PROFILE_SCHEMA_VERSION,
+          };
+        }
+        // Custom profiles or up-to-date: just ensure new params exist
         const storedParamIds = new Set((p.params ?? []).map(x => x.id));
-        const mergedParams = [
-          ...(p.params ?? []),
-          ...ALL_PARAMS.filter(ap => !storedParamIds.has(ap.id)),
-        ];
         return {
           ...p,
-          params: mergedParams,
+          params:   [...(p.params ?? []), ...ALL_PARAMS.filter(ap => !storedParamIds.has(ap.id))],
           minScore: p.minScore ?? 0,
+          _v:       PROFILE_SCHEMA_VERSION,
         };
       });
     }
   } catch { /* ignore */ }
-  return DEFAULT_PROFILES;
+  return DEFAULT_PROFILES.map(p => ({ ...p, _v: PROFILE_SCHEMA_VERSION }));
 }
 
 function saveProfiles(profiles) {
