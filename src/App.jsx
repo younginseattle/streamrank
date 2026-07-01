@@ -21,19 +21,23 @@ const REFRESH_OPTIONS = [
 
 // ── Scoring params ─────────────────────────────────────────────────────────────
 const ALL_PARAMS = [
-  { id: "rating",         label: "Overall Rating",        description: "Aggregated score 0–100",      weight: 35, enabled: true  },
-  { id: "hidden_gem",     label: "Hidden Gem Bonus",      description: "High score, low popularity",  weight: 15, enabled: true  },
-  { id: "family",         label: "Family Friendly",       description: "Suitable for all ages",       weight: 0,  enabled: false },
-  { id: "short_runtime",  label: "Short Episodes",        description: "Under 45 min / episode",      weight: 10, enabled: true  },
-  { id: "recency",        label: "Recency",               description: "Newer content preferred",     weight: 0,  enabled: false },
-  { id: "mood_cerebral",  label: "Cerebral / Thoughtful", description: "Drama, history, docs",        weight: 20, enabled: true  },
-  { id: "mood_epic",      label: "Epic / Cinematic",      description: "Action, sci-fi, fantasy",     weight: 20, enabled: true  },
-  { id: "mood_funny",     label: "Comedy",                description: "Comedies and sitcoms",        weight: 0,  enabled: false },
-  { id: "mood_romance",   label: "Romance",               description: "Love stories & relationships",weight: 0,  enabled: false },
-  { id: "mood_romcom",    label: "Romantic Comedy",       description: "Light, fun romance + laughs", weight: 0,  enabled: false },
-  { id: "mood_truecrime", label: "True Crime",            description: "Crime docs & investigations", weight: 0,  enabled: false },
-  { id: "mood_reality",   label: "Reality TV",            description: "Competition & reality shows", weight: 0,  enabled: false },
-  { id: "mood_thriller",  label: "Thriller / Mystery",    description: "Suspense and whodunits",      weight: 0,  enabled: false },
+  { id: "rating",         label: "Overall Rating",        description: "Aggregated score 0–100",        weight: 35, enabled: true  },
+  { id: "hidden_gem",     label: "Hidden Gem Bonus",      description: "High score, low popularity",    weight: 15, enabled: true  },
+  { id: "critics",        label: "Critics Score",         description: "RT Tomatometer + Metascore",    weight: 0,  enabled: false },
+  { id: "imdb",           label: "IMDb Rating",           description: "IMDb audience score",           weight: 0,  enabled: false },
+  { id: "binge_ready",    label: "Binge-Ready",           description: "Series with 3+ seasons",        weight: 0,  enabled: false },
+  { id: "new_release",    label: "New Release",           description: "Released 2022 or later",        weight: 0,  enabled: false },
+  { id: "family",         label: "Family Friendly",       description: "Suitable for all ages",         weight: 0,  enabled: false },
+  { id: "short_runtime",  label: "Short Episodes",        description: "Under 45 min / episode",        weight: 10, enabled: true  },
+  { id: "recency",        label: "Recency",               description: "Newer content scores higher",   weight: 0,  enabled: false },
+  { id: "mood_cerebral",  label: "Cerebral / Thoughtful", description: "Drama, history, docs",          weight: 20, enabled: true  },
+  { id: "mood_epic",      label: "Epic / Cinematic",      description: "Action, sci-fi, fantasy",       weight: 20, enabled: true  },
+  { id: "mood_funny",     label: "Comedy",                description: "Comedies and sitcoms",          weight: 0,  enabled: false },
+  { id: "mood_romance",   label: "Romance",               description: "Love stories & relationships",  weight: 0,  enabled: false },
+  { id: "mood_romcom",    label: "Romantic Comedy",       description: "Light, fun romance + laughs",   weight: 0,  enabled: false },
+  { id: "mood_truecrime", label: "True Crime",            description: "Crime docs & investigations",   weight: 0,  enabled: false },
+  { id: "mood_reality",   label: "Reality TV",            description: "Competition & reality shows",   weight: 0,  enabled: false },
+  { id: "mood_thriller",  label: "Thriller / Mystery",    description: "Suspense and whodunits",        weight: 0,  enabled: false },
 ];
 
 // Preset param sets per profile
@@ -46,9 +50,10 @@ const MATT_PARAMS = ALL_PARAMS.map(p => ({
 
 const WIFE_PARAMS = ALL_PARAMS.map(p => ({
   ...p,
-  enabled: ["rating","mood_romance","mood_romcom","mood_funny","mood_truecrime","mood_reality"].includes(p.id),
-  weight:  p.id === "rating" ? 25 : p.id === "mood_romance" ? 20 : p.id === "mood_romcom" ? 20
-         : p.id === "mood_funny" ? 15 : p.id === "mood_truecrime" ? 15 : p.id === "mood_reality" ? 15 : p.weight,
+  enabled: ["rating","critics","mood_romance","mood_romcom","mood_funny","mood_truecrime","mood_reality"].includes(p.id),
+  weight:  p.id === "rating" ? 20 : p.id === "critics" ? 15 : p.id === "mood_romance" ? 20
+         : p.id === "mood_romcom" ? 20 : p.id === "mood_funny" ? 15
+         : p.id === "mood_truecrime" ? 15 : p.id === "mood_reality" ? 15 : p.weight,
 }));
 
 const DEFAULT_PROFILES = [
@@ -85,7 +90,7 @@ function saveProfiles(profiles) {
 }
 
 // ── Scoring ────────────────────────────────────────────────────────────────────
-function scoreItem(item, params) {
+function scoreItem(item, params, tmdb = null) {
   const active = params.filter(p => p.enabled && p.weight > 0);
   const totalW = active.reduce((s, p) => s + p.weight, 0);
   if (!totalW) return 0;
@@ -95,17 +100,29 @@ function scoreItem(item, params) {
     const mood = item.mood ?? [];
     if      (p.id === "rating")         s = (item.rating ?? 50) / 100;
     else if (p.id === "hidden_gem")     s = (item.rating ?? 0) > 80 && (item.popularity ?? 100) < 70 ? 1 : 0;
-    else if (p.id === "family")         s = item.family ? 1 : 0;
-    else if (p.id === "short_runtime")  s = item.type === "series" ? Math.max(0, 1 - ((item.runtime ?? 45) - 20) / 60) : 0;
-    else if (p.id === "recency")        s = Math.max(0, ((item.year ?? 2018) - 2015) / 10);
-    else if (p.id === "mood_cerebral")  s = mood.includes("cerebral")  ? 1 : 0;
-    else if (p.id === "mood_epic")      s = mood.includes("epic")      ? 1 : 0;
-    else if (p.id === "mood_funny")     s = mood.includes("funny")     ? 1 : 0;
-    else if (p.id === "mood_romance")   s = mood.includes("romance")   ? 1 : 0;
-    else if (p.id === "mood_romcom")    s = mood.includes("romcom")    ? 1 : 0;
-    else if (p.id === "mood_truecrime") s = mood.includes("truecrime") ? 1 : 0;
-    else if (p.id === "mood_reality")   s = mood.includes("reality")   ? 1 : 0;
-    else if (p.id === "mood_thriller")  s = mood.includes("intense")   ? 1 : 0;
+    else if (p.id === "critics") {
+      // blend RT and Metascore when available, fall back gracefully
+      const rt   = tmdb?.rtScore   != null ? tmdb.rtScore / 100   : null;
+      const meta = tmdb?.metascore != null ? tmdb.metascore / 100 : null;
+      if (rt != null && meta != null) s = (rt + meta) / 2;
+      else if (rt != null)            s = rt;
+      else if (meta != null)          s = meta;
+      else                            s = (item.rating ?? 50) / 100; // fallback to catalog rating
+    }
+    else if (p.id === "imdb")          s = tmdb?.imdbRating != null ? tmdb.imdbRating / 100 : (item.rating ?? 50) / 100;
+    else if (p.id === "binge_ready")   s = item.type === "series" && (item.seasons ?? 0) >= 3 ? 1 : 0;
+    else if (p.id === "new_release")   s = (item.year ?? 0) >= 2022 ? 1 : 0;
+    else if (p.id === "family")        s = item.family ? 1 : 0;
+    else if (p.id === "short_runtime") s = item.type === "series" ? Math.max(0, 1 - ((item.runtime ?? 45) - 20) / 60) : 0;
+    else if (p.id === "recency")       s = Math.max(0, ((item.year ?? 2018) - 2015) / 10);
+    else if (p.id === "mood_cerebral") s = mood.includes("cerebral")  ? 1 : 0;
+    else if (p.id === "mood_epic")     s = mood.includes("epic")      ? 1 : 0;
+    else if (p.id === "mood_funny")    s = mood.includes("funny")     ? 1 : 0;
+    else if (p.id === "mood_romance")  s = mood.includes("romance")   ? 1 : 0;
+    else if (p.id === "mood_romcom")   s = mood.includes("romcom")    ? 1 : 0;
+    else if (p.id === "mood_truecrime")s = mood.includes("truecrime") ? 1 : 0;
+    else if (p.id === "mood_reality")  s = mood.includes("reality")   ? 1 : 0;
+    else if (p.id === "mood_thriller") s = mood.includes("intense")   ? 1 : 0;
     total += s * p.weight;
   }
   return Math.round((total / totalW) * 100);
@@ -284,13 +301,14 @@ function ContentCard({ item, score, rank, onDismiss, tmdb }) {
           </div>
           <button
             onClick={e => { e.stopPropagation(); onDismiss(); }}
-            title="Remove from list"
-            style={{ fontSize: 15, lineHeight: 1, padding: "2px 6px", borderRadius: 4,
+            title="Mark as watched — hides from list and remembers across sessions"
+            style={{ fontSize: 10, lineHeight: 1, padding: "3px 7px", borderRadius: 4,
               border: "1px solid #1F2937", background: "transparent",
-              color: "#6B7280", cursor: "pointer", flexShrink: 0 }}
-            onMouseEnter={e => { e.currentTarget.style.color = "#EF4444"; e.currentTarget.style.borderColor = "#EF444444"; }}
-            onMouseLeave={e => { e.currentTarget.style.color = "#6B7280"; e.currentTarget.style.borderColor = "#1F2937"; }}>
-            ×
+              color: "#6B7280", cursor: "pointer", flexShrink: 0, fontFamily: "Inter,sans-serif",
+              fontWeight: 600, letterSpacing: "0.04em" }}
+            onMouseEnter={e => { e.currentTarget.style.color = "#22C55E"; e.currentTarget.style.borderColor = "#22C55E44"; e.currentTarget.textContent = "✓ Watched"; }}
+            onMouseLeave={e => { e.currentTarget.style.color = "#6B7280"; e.currentTarget.style.borderColor = "#1F2937"; e.currentTarget.textContent = "Seen"; }}>
+            Seen
           </button>
         </div>
       </div>
@@ -718,7 +736,7 @@ export default function App() {
   const scored = consolidated
     .filter(i => filterType === "all" || i.type === filterType)
     .filter(i => !dismissed.has(dismissKey(i)))
-    .map(item => ({ item, score: scoreItem(item, params) }))
+    .map(item => ({ item, score: scoreItem(item, params, tmdbCache[item.groupKey] ?? null) }))
     .filter(({ score }) => score >= minScore)
     .sort((a, b) => sortBy === "score" ? b.score - a.score : (b.item.rating ?? 0) - (a.item.rating ?? 0));
 
@@ -874,7 +892,7 @@ export default function App() {
             {/* Dismissed */}
             {dismissed.size > 0 && (
               <div style={{ marginTop: 11, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                <span style={{ fontSize: 10, color: "#9CA3AF" }}>{dismissed.size} title{dismissed.size !== 1 ? "s" : ""} hidden</span>
+                <span style={{ fontSize: 10, color: "#9CA3AF" }}>{dismissed.size} watched & hidden</span>
                 <button onClick={restoreDismissed} style={{ fontSize: 10, color: "#A78BFA",
                   background: "transparent", border: "none", cursor: "pointer", textDecoration: "underline" }}>
                   restore all
