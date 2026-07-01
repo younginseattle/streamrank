@@ -50,18 +50,25 @@ const MATT_PARAMS = ALL_PARAMS.map(p => ({
 
 const WIFE_PARAMS = ALL_PARAMS.map(p => ({
   ...p,
-  enabled: ["rating","critics","mood_romance","mood_romcom","mood_funny","mood_truecrime","mood_reality"].includes(p.id),
-  weight:  p.id === "rating" ? 20 : p.id === "critics" ? 15 : p.id === "mood_romance" ? 20
-         : p.id === "mood_romcom" ? 20 : p.id === "mood_funny" ? 15
-         : p.id === "mood_truecrime" ? 15 : p.id === "mood_reality" ? 15 : p.weight,
+  enabled: ["rating","critics","recency","new_release","mood_romance","mood_romcom","mood_funny","mood_truecrime","mood_reality"].includes(p.id),
+  weight:  p.id === "rating"         ? 20
+         : p.id === "critics"        ? 15
+         : p.id === "recency"        ? 15
+         : p.id === "new_release"    ? 15
+         : p.id === "mood_romance"   ? 20
+         : p.id === "mood_romcom"    ? 20
+         : p.id === "mood_funny"     ? 15
+         : p.id === "mood_truecrime" ? 15
+         : p.id === "mood_reality"   ? 15
+         : p.weight,
 }));
 
 const DEFAULT_PROFILES = [
   { id: "matt", name: "Matt",  params: MATT_PARAMS, filterType: "all", sortBy: "score", minScore: 0,  dismissed: [] },
-  { id: "wife", name: "Wife",  params: WIFE_PARAMS, filterType: "all", sortBy: "score", minScore: 35, dismissed: [] },
+  { id: "wife", name: "Wife",  params: WIFE_PARAMS, filterType: "all", sortBy: "score", minScore: 45, dismissed: [] },
 ];
 
-const PROFILE_SCHEMA_VERSION = 3; // bump when presets or params change
+const PROFILE_SCHEMA_VERSION = 4; // bump when presets or params change
 
 function loadProfiles() {
   try {
@@ -122,7 +129,7 @@ function scoreItem(item, params, tmdb = null) {
     else if (p.id === "new_release")   s = (item.year ?? 0) >= 2022 ? 1 : 0;
     else if (p.id === "family")        s = item.family ? 1 : 0;
     else if (p.id === "short_runtime") s = item.type === "series" ? Math.max(0, 1 - ((item.runtime ?? 45) - 20) / 60) : 0;
-    else if (p.id === "recency")       s = Math.max(0, ((item.year ?? 2018) - 2015) / 10);
+    else if (p.id === "recency")       s = Math.max(0, Math.min(1, ((item.year ?? 2000) - 2000) / 24));
     else if (p.id === "mood_cerebral") s = mood.includes("cerebral")  ? 1 : 0;
     else if (p.id === "mood_epic")     s = mood.includes("epic")      ? 1 : 0;
     else if (p.id === "mood_funny")    s = mood.includes("funny")     ? 1 : 0;
